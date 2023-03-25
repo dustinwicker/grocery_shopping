@@ -55,8 +55,29 @@ headers = {
 }
 params = {
         'filter.locationId': edgewater_location_id,
-        'filter.term': 'apples'
+        'filter.term': 'kale' #apples
 }
 response_three = requests.get(url, headers=headers, params=params, verify=False)
 print(response_three.status_code)
-pd.DataFrame(json.loads(response_three.text)['data']).columns
+df = pd.DataFrame(json.loads(response_three.text)['data'])
+# drop 'images'
+df = df[['productId', 'upc', 'aisleLocations', 'brand', 'categories',
+       'countryOrigin', 'description', 'items', 'itemInformation',
+       'temperature']].sort_values(by=['brand', 'description'])
+df = pd.concat([df.drop(['items'], axis=1), df['items'].apply(lambda x: x[0]).apply(pd.Series)], axis=1)
+df = pd.concat([df.drop(['price'], axis=1), df['price'].apply(pd.Series)], axis=1)
+
+df.loc[(df['size'].str.contains('lb')) & (df['regularPerUnitEstimate'].isna()), 'regularPerUnitEstimate'] = \
+    df.loc[(df['size'].str.contains('lb')) & (df['regularPerUnitEstimate'].isna()),'regular']/\
+    df.loc[(df['size'].str.contains('lb')) & (df['regularPerUnitEstimate'].isna()),'size'].str.replace(' lb','').astype(int)
+df = df.rename(columns={'regularPerUnitEstimate':'regularPerWeight'})
+df.regularPerWeight = df.regularPerWeight.round(2)
+
+df.loc[(df['size'].str.contains('lb')) & (df['promoPerUnitEstimate'].isna()), 'promoPerUnitEstimate'] = \
+    df.loc[(df['size'].str.contains('lb')) & (df['promoPerUnitEstimate'].isna()),'promo']/\
+    df.loc[(df['size'].str.contains('lb')) & (df['promoPerUnitEstimate'].isna()),'size'].str.replace(' lb','').astype(int)
+df = df.rename(columns={'promoPerUnitEstimate':'promoPerWeight'})
+df.promoPerWeight = df.promoPerWeight.round(2)
+df.sort_values(by=['promoPerWeight', 'regularPerWeight'])[['description', 'regularPerWeight', 'promoPerWeight']]
+
+kale = pd.DataFrame(json.loads(response_three.text)['data'])
