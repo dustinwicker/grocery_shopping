@@ -262,17 +262,42 @@ headers = {
         'Authorization': f'Bearer {access_token}'
 }
 # decaf
-decaf_tea = pd.DataFrame()
-for s in [1,50,100]:
-    print(s)
-    params = {'filter.locationId': edgewater_location_id,
+params = {'filter.locationId': edgewater_location_id,
           'filter.fulfillment':'csp',
           'filter.term': 'decaf tea', #apples #kale #spinach,
           'filter.limit': 50}
+response_three = requests.get(url, headers=headers, params=params, verify=False)
+print(response_three.status_code)
+decaf_tea = pd.DataFrame(json.loads(response_three.text)['data'])
+
+# herbal
+herbal_tea = pd.DataFrame()
+params = {'filter.locationId': edgewater_location_id,
+          'filter.fulfillment':'csp',
+          'filter.term': 'herbal tea', #apples #kale #spinach,
+          'filter.limit': 50}
+response_three = requests.get(url, headers=headers, params=params, verify=False)
+print(response_three.status_code)
+h = pd.DataFrame(json.loads(response_three.text)['data'])
+
+
+for s in [50,100,150]:
+    print(s)
+    params = {'filter.locationId': edgewater_location_id,
+              'filter.fulfillment':'csp',
+              'filter.term': 'herbal tea', #apples #kale #spinach,
+              'filter.limit': 50,
+              'filter.start':s}
     response_three = requests.get(url, headers=headers, params=params, verify=False)
     print(response_three.status_code)
-    t = pd.DataFrame(json.loads(response_three.text)['data'])
-    tea = pd.concat([tea, t], axis=0)
+    h = pd.DataFrame(json.loads(response_three.text)['data'])
+    herbal_tea = pd.concat([herbal_tea, h], axis=0)
+
+
+
+
+
+
 tea = tea.drop(columns=['productId', 'upc', 'images', 'itemInformation', 'temperature'])
 tea = pd.concat([tea.drop(['items'], axis=1), tea['items'].apply(lambda x: x[0]).apply(pd.Series)], axis=1)
 tea = pd.concat([tea.drop(['price'], axis=1), tea['price'].apply(pd.Series)], axis=1)
