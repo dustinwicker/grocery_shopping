@@ -25,7 +25,6 @@ payload = {
         'grant_type': "client_credentials",
         'scope': ['product.compact'],
     }
-
 # figure out why verify = False works
 response = requests.post(url, headers=headers, data=payload, verify=False)
 print(response.status_code)
@@ -213,15 +212,41 @@ params = {
 }
 response_three = requests.get(url, headers=headers, params=params, verify=False)
 print(response_three.status_code)
-v_ = pd.DataFrame(json.loads(response_three.text)['meta'])
+v_ = pd.DataFrame(json.loads(response_three.text)['data'])
 ve=pd.concat([v,v_],axis=0)
+
+
+
+# vegetables
+url = api_url + '/products'
+headers = {
+        'Accept': 'application/json',
+        'Authorization': f'Bearer {access_token}'
+}
+ve = pd.DataFrame()
+for s in [1,50,100,150,200,250]:
+    print(s)
+    params = {'filter.locationId': edgewater_location_id,
+          'filter.fulfillment':'csp',
+          'filter.term': 'fresh vegetables', #apples #kale #spinach,
+          'filter.limit': 50,
+          'filter.start': s}
+    response_three = requests.get(url, headers=headers, params=params, verify=False)
+    print(response_three.status_code)
+    v = pd.DataFrame(json.loads(response_three.text)['data'])
+    ve = pd.concat([ve, v], axis=0)
 ve = ve.drop(columns=['productId', 'upc', 'images', 'itemInformation', 'temperature'])
 ve = pd.concat([ve.drop(['items'], axis=1), ve['items'].apply(lambda x: x[0]).apply(pd.Series)], axis=1)
-ve = pd.concat([ve.drop(['price'], axis=1), ve['price'].apply(pd.Series)], axis=1)
-ve['size'].unique()
 
+ve['size_a'] = ve['size'].apply(lambda x: x.split())
+
+# create size_oz column
 ve['size_oz'] = np.nan
-ve.loc[ve['size'].str.contains('lb|oz'), 'size_oz'] = ve.loc[ve['size'].str.contains('lb|oz'), 'size']
+# oz, oz., fl oz, fl oz.
+ve['size_oz'] = ve['size_a'].apply(lambda x: float(x[0]) if x[-1] == 'oz' or x[-1] == 'oz.' else x)
+# lb, lb.
+ve['size_oz'] = ve['size_a'].apply(lambda x: float(x[0])*16 if x[-1] == 'lb' or x[-1] == 'lb.' else x)
+
 
 ve.loc[ve['size'].str.contains('lb', na=False), 'size_oz'] = \
     ve.loc[ve['size'].str.contains('lb', na=False), 'size'].str.replace('lb','').str.strip().astype(float) * oz_in_lb
