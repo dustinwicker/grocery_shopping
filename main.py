@@ -238,24 +238,24 @@ for s in [1,50,100,150,200,250]:
 ve = ve.drop(columns=['productId', 'upc', 'images', 'itemInformation', 'temperature'])
 ve = pd.concat([ve.drop(['items'], axis=1), ve['items'].apply(lambda x: x[0]).apply(pd.Series)], axis=1)
 
+ve.loc[ve['size']=='each','size'] = '1 each'
 ve['size_a'] = ve['size'].apply(lambda x: x.split())
 
-# create size_oz column
+# create size_oz column (can compare oz, lb, fl oz)
 ve['size_oz'] = np.nan
 # oz, oz., fl oz, fl oz.
-ve['size_oz'] = ve['size_a'].apply(lambda x: float(x[0]) if x[-1] == 'oz' or x[-1] == 'oz.' else x)
 # lb, lb.
-ve['size_oz'] = ve['size_a'].apply(lambda x: float(x[0])*16 if x[-1] == 'lb' or x[-1] == 'lb.' else x)
+ve['size_oz'] = ve['size_a'].apply(lambda x: float(x[0]) if ( (x[-1] == 'oz' or x[-1] == 'oz.') and (len(x) == 2 or len(x) == 3) )
+                                    else ( float(x[0])*oz_in_lb if ( (x[-1] == 'lb' or x[-1] == 'lb.') and (len(x) == 2) ) else np.nan ) )
 
-
-ve.loc[ve['size'].str.contains('lb', na=False), 'size_oz'] = \
-    ve.loc[ve['size'].str.contains('lb', na=False), 'size'].str.replace('lb','').str.strip().astype(float) * oz_in_lb
-
-ve.loc[ve['size_oz'].str.contains('oz',na=False), 'size_oz'] = \
-    ve.loc[ve['size_oz'].str.contains('oz',na=False), 'size_oz'].str.replace('oz','').str.strip().astype(float)
+# create size_each column (bunch, ct, each)
+ve['size_each'] = np.nan
+ve['size_each'] = ve['size_a'].apply(lambda x: float(x[0]) if (x[-1] == 'ct' or x[-1] == 'each' or x[-1] == 'bunch' ) and (len(x) == 2) else np.nan )
+# figure out remaining few sizes
 
 ve['regular_per_size_oz'] = ve['regular']/ve['size_oz']
 ve['promo_per_size_oz'] = ve['promo']/ve['size_oz']
+# rename column
 ve['pct_change']=((ve.promo_per_size_oz - ve.regular_per_size_oz)/ve.regular_per_size_oz)*100
 ve.loc[ve['promo_per_size_oz']>0.0].sort_values(by=['promo_per_size_oz', 'regular_per_size_oz'])
 ve[['brand','description','regular','promo','regularPerUnitEstimate','promoPerUnitEstimate','size_oz',
@@ -265,12 +265,7 @@ ve.sort_values(by=['promo_per_size_oz', 'regular_per_size_oz'])
 ve[['brand','description','regular','promo','regularPerUnitEstimate','promoPerUnitEstimate','size_oz',
    'regular_per_size_oz', 'promo_per_size_oz', 'pct_change']].sort_values(by=['promo_per_size_oz', 'regular_per_size_oz'])
 
-ve['size_each'] = np.nan
-ve.loc[ve['size'].str.contains('bunch|ct|each'), 'size_each'] = ve.loc[ve['size'].str.contains('bunch|ct|each'), 'size']
 
-ve.loc[ve['size']=='each','size'] = '1 each'
-ve.loc[ve['size'].str.contains('bunch|ct|each', na=False), 'size_each'] = \
-    ve.loc[ve['size'].str.contains('bunch|ct|each', na=False), 'size'].str.replace('bunch','').str.replace('ct','').str.replace('each','').str.strip().astype(float)
 ve['regular_per_size_each'] = ve['regular']/ve['size_each']
 ve['promo_per_size_each'] = ve['promo']/ve['size_each']
 
