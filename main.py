@@ -193,36 +193,6 @@ headers = {
         'Accept': 'application/json',
         'Authorization': f'Bearer {access_token}'
 }
-params = {
-        'filter.locationId': edgewater_location_id,
-        'filter.fulfillment':'csp',
-        'filter.term': 'fresh vegetables', #apples #kale #spinach,
-        'filter.limit':50#,
-        #'filter.start':50
-}
-response_three = requests.get(url, headers=headers, params=params, verify=False)
-print(response_three.status_code)
-v = pd.DataFrame(json.loads(response_three.text)['data'])
-params = {
-        'filter.locationId': edgewater_location_id,
-        'filter.fulfillment':'csp',
-        'filter.term': 'fresh vegetables', #apples #kale #spinach,
-        'filter.limit':50,
-        'filter.start':50
-}
-response_three = requests.get(url, headers=headers, params=params, verify=False)
-print(response_three.status_code)
-v_ = pd.DataFrame(json.loads(response_three.text)['data'])
-ve=pd.concat([v,v_],axis=0)
-
-
-
-# vegetables
-url = api_url + '/products'
-headers = {
-        'Accept': 'application/json',
-        'Authorization': f'Bearer {access_token}'
-}
 ve = pd.DataFrame()
 for s in [1,50,100,150,200,250]:
     print(s)
@@ -238,7 +208,13 @@ for s in [1,50,100,150,200,250]:
 ve = ve.drop(columns=['productId', 'upc', 'images', 'itemInformation', 'temperature'])
 ve = pd.concat([ve.drop(['items'], axis=1), ve['items'].apply(lambda x: x[0]).apply(pd.Series)], axis=1)
 
-ve.loc[ve['size']=='each','size'] = '1 each'
+# clean up misc. sizes
+ve.loc[ve['size'] == 'each', 'size'] = '1 each'
+ve.loc[ve['size'] == '1 pt / 10 oz', 'size'] = '10 oz'
+ve.loc[ve['size'] == '4 ct / 3 oz', 'size'] = '12 oz'
+ve.loc[ve['size'] == '4 ct / 15.25 oz', 'size'] = '61 oz'
+
+# create size_a column
 ve['size_a'] = ve['size'].apply(lambda x: x.split())
 
 # create size_oz column (can compare oz, lb, fl oz)
@@ -252,6 +228,9 @@ ve['size_oz'] = ve['size_a'].apply(lambda x: float(x[0]) if ( (x[-1] == 'oz' or 
 ve['size_each'] = np.nan
 ve['size_each'] = ve['size_a'].apply(lambda x: float(x[0]) if (x[-1] == 'ct' or x[-1] == 'each' or x[-1] == 'bunch' ) and (len(x) == 2) else np.nan )
 # figure out remaining few sizes
+
+# check to see if any products remain that need sizing information
+print(ve.loc[ (ve['size_oz'].isna() & ve['size_each'].isna()), ['description', 'size_a', 'size']])
 
 ve['regular_per_size_oz'] = ve['regular']/ve['size_oz']
 ve['promo_per_size_oz'] = ve['promo']/ve['size_oz']
@@ -268,6 +247,12 @@ ve[['brand','description','regular','promo','regularPerUnitEstimate','promoPerUn
 
 ve['regular_per_size_each'] = ve['regular']/ve['size_each']
 ve['promo_per_size_each'] = ve['promo']/ve['size_each']
+
+
+
+
+
+
 
 veg = pd.concat([
     ve[['description','size','regular', 'promo', 'regular_per_size_oz']].dropna().rename(columns={'regular_per_size_oz':'per_size'}),
