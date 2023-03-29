@@ -7,15 +7,15 @@ import pandas as pd
 import numpy as np
 
 oz_in_lb = 16
+oz_in_gal = 128
 
 client_id = os.environ['kroger_client_id']
 client_secret = os.environ['kroger_client_secret']
-
 # Authentication requires base64 encoded id:secret, which is precalculated here
 encoded_client_token = base64.b64encode(f"{client_id}:{client_secret}".encode('ascii')).decode('ascii')
 
+# obtain access token
 api_url = 'https://api.kroger.com/v1'
-
 url = api_url + '/connect/oauth2/token'
 headers = {
         'Content-Type': 'application/x-www-form-urlencoded',
@@ -228,7 +228,6 @@ ve['size_oz'] = ve['size_a'].apply(lambda x: float(x[0]) if ( (x[-1] == 'oz' or 
 # create size_each column (bunch, ct, each)
 ve['size_each'] = np.nan
 ve['size_each'] = ve['size_a'].apply(lambda x: float(x[0]) if (x[-1] == 'ct' or x[-1] == 'each' or x[-1] == 'bunch' ) and (len(x) == 2) else np.nan )
-# figure out remaining few sizes
 
 # check to see if any products remain that need sizing information
 print(ve.loc[ (ve['size_oz'].isna() & ve['size_each'].isna()), ['description', 'size_a', 'size']])
@@ -242,14 +241,7 @@ ve['regular_per_size_each'] = ve['regular']/ve['size_each']
 ve['promo_per_size_each'] = ve['promo']/ve['size_each']
 ve['pct_change_regular_to_promo_size_each']=((ve.promo_per_size_each - ve.regular_per_size_each)/ve.regular_per_size_each)*100
 
-
 # size_oz price
-ve[['brand','description','regular','promo','regularPerUnitEstimate','promoPerUnitEstimate','size_oz',
-   'regular_per_size_oz', 'promo_per_size_oz', 'pct_change_regular_to_promo_size_oz']].loc[ve['promo_per_size_oz']>0.0].sort_values(by=['promo_per_size_oz', 'regular_per_size_oz'])
-
-ve[['brand','description','regular','promo','regularPerUnitEstimate','promoPerUnitEstimate','size_oz',
-   'regular_per_size_oz', 'promo_per_size_oz', 'pct_change_regular_to_promo_size_oz']].sort_values(by=['promo_per_size_oz', 'regular_per_size_oz'])
-
 veg_size_oz = pd.concat([
     ve[['description','size','regular', 'promo', 'regular_per_size_oz', 'pct_change_regular_to_promo_size_oz']].dropna().rename(columns={'regular_per_size_oz':'per_size_oz'}),
     ve.loc[ve.promo_per_size_oz>0,['description','size','regular', 'promo', 'promo_per_size_oz', 'pct_change_regular_to_promo_size_oz']].dropna().rename(columns={'promo_per_size_oz':'per_size_oz'})
@@ -257,22 +249,72 @@ veg_size_oz = pd.concat([
 veg_size_oz['per_size_rank'] = veg_size_oz.groupby('per_size_oz')['per_size_oz'].transform('mean').rank(method='dense',ascending=True)
 
 # size_each price
+veg_size_each = pd.concat([
+    ve[['description','size','regular', 'promo', 'regular_per_size_each', 'pct_change_regular_to_promo_size_each']].dropna().rename(columns={'regular_per_size_each':'per_size_each'}),
+    ve.loc[ve.promo_per_size_each>0,['description','size','regular', 'promo', 'promo_per_size_each', 'pct_change_regular_to_promo_size_each']].dropna().rename(columns={'promo_per_size_each':'per_size_each'})
+    ]).sort_values(by=['per_size_each']).drop_duplicates(subset='description', keep='first')
+veg_size_each['per_size_rank'] = veg_size_each.groupby('per_size_each')['per_size_each'].transform('mean').rank(method='dense',ascending=True)
 
+# decaf and herbal tea
+url = api_url + '/products'
+headers = {
+        'Accept': 'application/json',
+        'Authorization': f'Bearer {access_token}'
+}
+# decaf
+decaf_tea = pd.DataFrame()
+for s in [1,50,100]:
+    print(s)
+    params = {'filter.locationId': edgewater_location_id,
+          'filter.fulfillment':'csp',
+          'filter.term': 'decaf tea', #apples #kale #spinach,
+          'filter.limit': 50}
+    response_three = requests.get(url, headers=headers, params=params, verify=False)
+    print(response_three.status_code)
+    t = pd.DataFrame(json.loads(response_three.text)['data'])
+    tea = pd.concat([tea, t], axis=0)
+tea = tea.drop(columns=['productId', 'upc', 'images', 'itemInformation', 'temperature'])
+tea = pd.concat([tea.drop(['items'], axis=1), tea['items'].apply(lambda x: x[0]).apply(pd.Series)], axis=1)
+tea = pd.concat([tea.drop(['price'], axis=1), tea['price'].apply(pd.Series)], axis=1)
 
-veg =
-    ,
-    ve[['description','size','regular', 'promo', 'regular_per_size_each']].dropna().rename(columns={'regular_per_size_each':'per_size'}),
-    ve.loc[ve.promo_per_size_each>0,['description','size','regular', 'promo', 'promo_per_size_each']].dropna().rename(columns={'promo_per_size_each':'per_size'})
-    ])
-veg.sort_values(by=['per_size'])[:100]
-veg = veg.sort_values(by=['per_size']).drop_duplicates(subset='description', keep='first')
+tea = tea.loc[ (tea.description.str.contains('Decaf') & tea.description.str.contains('Tea'))]
 
-a = []
-for i in veg.description.apply(lambda x : x.split(' ')):
-    a.extend(i)
-from collections import Counter
-Counter(a)
-veg['per_size_rank'] = veg.groupby('per_size')['per_size'].transform('mean').rank(method='dense',ascending=True)
-for v in ['Onions', 'Peppers', 'Garlic','Cauliflower','Squash','Broccoli','Celery','Radishes','Potatoes','Potato',
-          'Mushrooms','Carrots','Zucchini','Beets','Turnip','Tomato','Asparagus','Parsnip','Leeks']:
-    print(veg.loc[veg.description.str.contains(v)])
+# create size_a column
+tea['size_a'] = tea['size'].apply(lambda x: x.split())
+
+# create size_oz column (can compare oz, lb, fl oz)
+tea['size_oz'] = np.nan
+# oz, oz., fl oz, fl oz.
+# lb, lb.
+tea['size_oz'] = tea['size_a'].apply(lambda x: float(x[0]) if ( (x[-1] == 'oz' or x[-1] == 'oz.') and (len(x) == 2 or len(x) == 3) )
+                                    else ( float(x[0])*oz_in_gal if ( (x[-1] == 'gal' or x[-1] == 'gal.') and (len(x) == 2) ) else np.nan ) )
+
+# create size_each column (bunch, ct, each)
+tea['size_ct'] = np.nan
+tea['size_ct'] = tea['size_a'].apply(lambda x: float(x[0]) if (x[-1] == 'ct' ) and (len(x) == 2) else np.nan )
+
+# check to see if any products remain that need sizing information
+print(tea.loc[ (tea['size_oz'].isna() & tea['size_ct'].isna()), ['description', 'size_a', 'size']])
+
+# column creation
+tea['regular_per_size_oz'] = tea['regular']/tea['size_oz']
+tea['promo_per_size_oz'] = tea['promo']/tea['size_oz']
+tea['pct_change_regular_to_promo_size_oz']=((tea.promo_per_size_oz - tea.regular_per_size_oz)/tea.regular_per_size_oz)*100
+
+tea['regular_per_size_ct'] = tea['regular']/tea['size_ct']
+tea['promo_per_size_ct'] = tea['promo']/tea['size_ct']
+tea['pct_change_regular_to_promo_size_ct']=((tea.promo_per_size_ct - tea.regular_per_size_ct)/tea.regular_per_size_ct)*100
+
+# size_oz price
+tea_size_oz = pd.concat([
+    tea[['description','size','regular', 'promo', 'regular_per_size_oz', 'pct_change_regular_to_promo_size_oz']].dropna().rename(columns={'regular_per_size_oz':'per_size_oz'}),
+    tea.loc[tea.promo_per_size_oz>0,['description','size','regular', 'promo', 'promo_per_size_oz', 'pct_change_regular_to_promo_size_oz']].dropna().rename(columns={'promo_per_size_oz':'per_size_oz'})
+    ]).sort_values(by=['per_size_oz']).drop_duplicates(subset='description', keep='first')
+tea_size_oz['per_size_rank'] = tea_size_oz.groupby('per_size_oz')['per_size_oz'].transform('mean').rank(method='dense',ascending=True)
+
+# size_each price
+tea_size_ct = pd.concat([
+    tea[['description','size','regular', 'promo', 'regular_per_size_ct', 'pct_change_regular_to_promo_size_ct']].dropna().rename(columns={'regular_per_size_ct':'per_size_ct'}),
+    tea.loc[tea.promo_per_size_ct>0,['description','size','regular', 'promo', 'promo_per_size_ct', 'pct_change_regular_to_promo_size_ct']].dropna().rename(columns={'promo_per_size_ct':'per_size_ct'})
+    ]).sort_values(by=['per_size_ct']).drop_duplicates(subset='description', keep='first')
+tea_size_ct['per_size_rank'] = tea_size_ct.groupby('per_size_ct')['per_size_ct'].transform('mean').rank(method='dense',ascending=True)
