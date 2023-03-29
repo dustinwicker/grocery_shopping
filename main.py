@@ -207,6 +207,7 @@ for s in [1,50,100,150,200,250]:
     ve = pd.concat([ve, v], axis=0)
 ve = ve.drop(columns=['productId', 'upc', 'images', 'itemInformation', 'temperature'])
 ve = pd.concat([ve.drop(['items'], axis=1), ve['items'].apply(lambda x: x[0]).apply(pd.Series)], axis=1)
+ve = pd.concat([ve.drop(['price'], axis=1), ve['price'].apply(pd.Series)], axis=1)
 
 # clean up misc. sizes
 ve.loc[ve['size'] == 'each', 'size'] = '1 each'
@@ -232,31 +233,34 @@ ve['size_each'] = ve['size_a'].apply(lambda x: float(x[0]) if (x[-1] == 'ct' or 
 # check to see if any products remain that need sizing information
 print(ve.loc[ (ve['size_oz'].isna() & ve['size_each'].isna()), ['description', 'size_a', 'size']])
 
+# column creation
 ve['regular_per_size_oz'] = ve['regular']/ve['size_oz']
 ve['promo_per_size_oz'] = ve['promo']/ve['size_oz']
-# rename column
-ve['pct_change']=((ve.promo_per_size_oz - ve.regular_per_size_oz)/ve.regular_per_size_oz)*100
-ve.loc[ve['promo_per_size_oz']>0.0].sort_values(by=['promo_per_size_oz', 'regular_per_size_oz'])
-ve[['brand','description','regular','promo','regularPerUnitEstimate','promoPerUnitEstimate','size_oz',
-   'regular_per_size_oz', 'promo_per_size_oz', 'pct_change']].loc[ve['promo_per_size_oz']>0.0].sort_values(by=['promo_per_size_oz', 'regular_per_size_oz'])
-
-ve.sort_values(by=['promo_per_size_oz', 'regular_per_size_oz'])
-ve[['brand','description','regular','promo','regularPerUnitEstimate','promoPerUnitEstimate','size_oz',
-   'regular_per_size_oz', 'promo_per_size_oz', 'pct_change']].sort_values(by=['promo_per_size_oz', 'regular_per_size_oz'])
-
+ve['pct_change_regular_to_promo_size_oz']=((ve.promo_per_size_oz - ve.regular_per_size_oz)/ve.regular_per_size_oz)*100
 
 ve['regular_per_size_each'] = ve['regular']/ve['size_each']
 ve['promo_per_size_each'] = ve['promo']/ve['size_each']
+ve['pct_change_regular_to_promo_size_each']=((ve.promo_per_size_each - ve.regular_per_size_each)/ve.regular_per_size_each)*100
 
 
+# size_oz price
+ve[['brand','description','regular','promo','regularPerUnitEstimate','promoPerUnitEstimate','size_oz',
+   'regular_per_size_oz', 'promo_per_size_oz', 'pct_change_regular_to_promo_size_oz']].loc[ve['promo_per_size_oz']>0.0].sort_values(by=['promo_per_size_oz', 'regular_per_size_oz'])
+
+ve[['brand','description','regular','promo','regularPerUnitEstimate','promoPerUnitEstimate','size_oz',
+   'regular_per_size_oz', 'promo_per_size_oz', 'pct_change_regular_to_promo_size_oz']].sort_values(by=['promo_per_size_oz', 'regular_per_size_oz'])
+
+veg_size_oz = pd.concat([
+    ve[['description','size','regular', 'promo', 'regular_per_size_oz', 'pct_change_regular_to_promo_size_oz']].dropna().rename(columns={'regular_per_size_oz':'per_size_oz'}),
+    ve.loc[ve.promo_per_size_oz>0,['description','size','regular', 'promo', 'promo_per_size_oz', 'pct_change_regular_to_promo_size_oz']].dropna().rename(columns={'promo_per_size_oz':'per_size_oz'})
+    ]).sort_values(by=['per_size_oz']).drop_duplicates(subset='description', keep='first')
+veg_size_oz['per_size_rank'] = veg_size_oz.groupby('per_size_oz')['per_size_oz'].transform('mean').rank(method='dense',ascending=True)
+
+# size_each price
 
 
-
-
-
-veg = pd.concat([
-    ve[['description','size','regular', 'promo', 'regular_per_size_oz']].dropna().rename(columns={'regular_per_size_oz':'per_size'}),
-    ve.loc[ve.promo_per_size_oz>0,['description','size','regular', 'promo', 'promo_per_size_oz']].dropna().rename(columns={'promo_per_size_oz':'per_size'}),
+veg =
+    ,
     ve[['description','size','regular', 'promo', 'regular_per_size_each']].dropna().rename(columns={'regular_per_size_each':'per_size'}),
     ve.loc[ve.promo_per_size_each>0,['description','size','regular', 'promo', 'promo_per_size_each']].dropna().rename(columns={'promo_per_size_each':'per_size'})
     ])
