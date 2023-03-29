@@ -271,7 +271,6 @@ print(response_three.status_code)
 decaf_tea = pd.DataFrame(json.loads(response_three.text)['data'])
 
 # herbal
-herbal_tea = pd.DataFrame()
 params = {'filter.locationId': edgewater_location_id,
           'filter.fulfillment':'csp',
           'filter.term': 'herbal tea', #apples #kale #spinach,
@@ -280,7 +279,7 @@ response_three = requests.get(url, headers=headers, params=params, verify=False)
 print(response_three.status_code)
 h = pd.DataFrame(json.loads(response_three.text)['data'])
 
-
+he = pd.DataFrame()
 for s in [50,100,150]:
     print(s)
     params = {'filter.locationId': edgewater_location_id,
@@ -290,19 +289,13 @@ for s in [50,100,150]:
               'filter.start':s}
     response_three = requests.get(url, headers=headers, params=params, verify=False)
     print(response_three.status_code)
-    h = pd.DataFrame(json.loads(response_three.text)['data'])
-    herbal_tea = pd.concat([herbal_tea, h], axis=0)
+    h_ = pd.DataFrame(json.loads(response_three.text)['data'])
+    he = pd.concat([he, h_], axis=0)
 
-
-
-
-
-
+tea = pd.concat([decaf_tea, h, he], axis=0)
 tea = tea.drop(columns=['productId', 'upc', 'images', 'itemInformation', 'temperature'])
 tea = pd.concat([tea.drop(['items'], axis=1), tea['items'].apply(lambda x: x[0]).apply(pd.Series)], axis=1)
 tea = pd.concat([tea.drop(['price'], axis=1), tea['price'].apply(pd.Series)], axis=1)
-
-tea = tea.loc[ (tea.description.str.contains('Decaf') & tea.description.str.contains('Tea'))]
 
 # create size_a column
 tea['size_a'] = tea['size'].apply(lambda x: x.split())
@@ -316,7 +309,8 @@ tea['size_oz'] = tea['size_a'].apply(lambda x: float(x[0]) if ( (x[-1] == 'oz' o
 
 # create size_each column (bunch, ct, each)
 tea['size_ct'] = np.nan
-tea['size_ct'] = tea['size_a'].apply(lambda x: float(x[0]) if (x[-1] == 'ct' ) and (len(x) == 2) else np.nan )
+tea['size_ct'] = tea['size_a'].apply(lambda x: float(x[0]) if (x[-1] == 'ct' ) and (len(x) == 2)
+                                     else ( float(x[0][:-2]) if x[0][-2:] == 'ct' else np.nan) )
 
 # check to see if any products remain that need sizing information
 print(tea.loc[ (tea['size_oz'].isna() & tea['size_ct'].isna()), ['description', 'size_a', 'size']])
