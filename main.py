@@ -297,6 +297,20 @@ tea = tea.drop(columns=['productId', 'upc', 'images', 'itemInformation', 'temper
 tea = pd.concat([tea.drop(['items'], axis=1), tea['items'].apply(lambda x: x[0]).apply(pd.Series)], axis=1)
 tea = pd.concat([tea.drop(['price'], axis=1), tea['price'].apply(pd.Series)], axis=1)
 
+# clean up misc. sizes - check these on kroger site ###
+# size gives ct (number of tea bags) and oz (weight of package) - only need ct
+tea.loc[(tea['description'].str.contains('Tea Bags|Teabags')) &
+        (tea['size'].str.contains('ct')) & (tea['size'].str.contains('oz')), 'size'] = \
+    tea.loc[ ( tea['description'].str.contains('Tea Bags|Teabags') ) &
+         ( tea['size'].str.contains('ct')) & ( tea['size'].str.contains('oz')), 'size' ].apply(lambda x : x[:x.find('ct')+len('ct')])
+
+# tea.loc[tea['size'] == '10 qt', 'size'] = ####
+tea.loc[tea['size'] == '12 bottles / 16 fl oz', 'size'] = str(12*16) + ' fl oz'
+tea.loc[tea['size'] == '12 ct / 1.16 oz', 'size'] = '12 ct'
+tea.loc[tea['size'] == '16 ct / .99 oz', 'size'] = '16 ct'
+tea.loc[tea['size'] == '16 ct / 1.13 oz', 'size'] = '16 ct'
+tea.loc[tea['size'] == '4 ct / 12 oz', 'size'] = str(4*12) + ' fl oz'
+
 # create size_a column
 tea['size_a'] = tea['size'].apply(lambda x: x.split())
 
