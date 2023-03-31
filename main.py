@@ -122,10 +122,9 @@ spinach['promo_per_size_oz'] = spinach['promo']/spinach['size_oz']
 # coffee
 params = {
         'filter.locationId': edgewater_location_id,
-        'filter.fulfillment':'csp',
+        'filter.fulfillment': 'csp',
         'filter.term': 'whole bean coffee', #apples #kale #spinach,
-        'filter.limit':50#,
-        #'filter.start':50
+        'filter.limit': 50
 }
 response_three = requests.get(url, headers=headers, params=params, verify=False)
 print(response_three.status_code)
@@ -134,8 +133,8 @@ params = {
         'filter.locationId': edgewater_location_id,
         'filter.fulfillment':'csp',
         'filter.term': 'whole bean coffee', #apples #kale #spinach,
-        'filter.limit':50,
-        'filter.start':50
+        'filter.limit': 50,
+        'filter.start': 50
 }
 response_three = requests.get(url, headers=headers, params=params, verify=False)
 print(response_three.status_code)
@@ -158,8 +157,7 @@ params = {
         'filter.locationId': edgewater_location_id,
         'filter.fulfillment':'csp',
         'filter.term': 'whole bean decaf coffee', #apples #kale #spinach,
-        'filter.limit':50#,
-        #'filter.start':50
+        'filter.limit': 50
 }
 response_three = requests.get(url, headers=headers, params=params, verify=False)
 print(response_three.status_code)
@@ -168,8 +166,8 @@ params = {
         'filter.locationId': edgewater_location_id,
         'filter.fulfillment':'csp',
         'filter.term': 'whole bean decaf coffee', #apples #kale #spinach,
-        'filter.limit':50,
-        'filter.start':50
+        'filter.limit': 50,
+        'filter.start': 50
 }
 response_three = requests.get(url, headers=headers, params=params, verify=False)
 print(response_three.status_code)
@@ -351,3 +349,76 @@ tea_size_ct = pd.concat([
     tea.loc[tea.promo_per_size_ct>0,['description','size','regular', 'promo', 'promo_per_size_ct', 'pct_change_regular_to_promo_size_ct']].dropna().rename(columns={'promo_per_size_ct':'per_size_ct'})
     ]).sort_values(by=['per_size_ct']).drop_duplicates(subset='description', keep='first')
 tea_size_ct['per_size_rank'] = tea_size_ct.groupby('per_size_ct')['per_size_ct'].transform('mean').rank(method='dense',ascending=True)
+
+# fruit
+url = api_url + '/products'
+headers = {
+        'Accept': 'application/json',
+        'Authorization': f'Bearer {access_token}'
+}
+
+params = {'filter.locationId': edgewater_location_id,
+          'filter.fulfillment':'csp',
+          'filter.term': 'fruit', #apples #kale #spinach,
+          'filter.limit': 50}
+response_three = requests.get(url, headers=headers, params=params, verify=False)
+print(response_three.status_code)
+f = pd.DataFrame(json.loads(response_three.text)['data'])
+
+fr = pd.DataFrame()
+for s in range(50,250,50):
+    print(s)
+    params = {'filter.locationId': edgewater_location_id,
+              'filter.fulfillment':'csp',
+              'filter.term': 'fruit', #apples #kale #spinach,
+              'filter.limit': 50,
+              'filter.start':s}
+    response_three = requests.get(url, headers=headers, params=params, verify=False)
+    print(response_three.status_code)
+    f_ = pd.DataFrame(json.loads(response_three.text)['data'])
+    fr = pd.concat([fr, f_], axis=0)
+
+fruit = pd.concat([f, fr], axis=0)
+fruit = fruit.drop(columns=['productId', 'upc', 'images', 'itemInformation', 'temperature'])
+fruit = pd.concat([fruit.drop(['items'], axis=1), fruit['items'].apply(lambda x: x[0]).apply(pd.Series)], axis=1)
+fruit = pd.concat([fruit.drop(['price'], axis=1), fruit['price'].apply(pd.Series)], axis=1)
+
+# create size_a column
+fruit['size_a'] = fruit['size'].apply(lambda x: x.split())
+
+# create size_oz column (can compare oz, lb, fl oz)
+fruit['size_oz'] = np.nan
+# oz, oz., fl oz, fl oz.
+# lb, lbs
+fruit['size_oz'] = fruit['size_a'].apply(lambda x: float(x[0]) if ( (x[-1] == 'oz' or x[-1] == 'oz.') and (len(x) == 2 or len(x) == 3) )
+                                    else ( float(x[0])*oz_in_lb if ( (x[-1] == 'lb' or x[-1] == 'lbs') and (len(x) == 2) ) else np.nan ) )
+
+# create size_each column (bunch, ct, each)
+fruit['size_each'] = np.nan
+fruit['size_each'] = fruit['size_a'].apply(lambda x: float(x[0]) if (x[-1] == 'ct' or x[-1] == 'each') and (len(x) == 2) else np.nan )
+
+# check to see if any products remain that need sizing information
+print(fruit.loc[ (fruit['size_oz'].isna() & fruit['size_each'].isna()), ['description', 'size_a', 'size']])
+
+# column creation
+fruit['regular_per_size_oz'] = fruit['regular']/fruit['size_oz']
+fruit['promo_per_size_oz'] = fruit['promo']/fruit['size_oz']
+fruit['pct_change_regular_to_promo_size_oz']=((fruit.promo_per_size_oz - fruit.regular_per_size_oz)/fruit.regular_per_size_oz)*100
+
+fruit['regular_per_size_each'] = fruit['regular']/fruit['size_each']
+fruit['promo_per_size_each'] = fruit['promo']/fruit['size_each']
+fruit['pct_change_regular_to_promo_size_each']=((fruit.promo_per_size_each - fruit.regular_per_size_each)/fruit.regular_per_size_each)*100
+
+# size_oz price
+fruit_size_oz = pd.concat([
+    fruit[['description','size','regular', 'promo', 'regular_per_size_oz', 'pct_change_regular_to_promo_size_oz']].dropna().rename(columns={'regular_per_size_oz':'per_size_oz'}),
+    fruit.loc[fruit.promo_per_size_oz>0,['description','size','regular', 'promo', 'promo_per_size_oz', 'pct_change_regular_to_promo_size_oz']].dropna().rename(columns={'promo_per_size_oz':'per_size_oz'})
+    ]).sort_values(by=['per_size_oz']).drop_duplicates(subset='description', keep='first')
+fruit_size_oz['per_size_rank'] = fruit_size_oz.groupby('per_size_oz')['per_size_oz'].transform('mean').rank(method='dense',ascending=True)
+
+# size_each price
+fruit_size_each = pd.concat([
+    fruit[['description','size','regular', 'promo', 'regular_per_size_each', 'pct_change_regular_to_promo_size_each']].dropna().rename(columns={'regular_per_size_each':'per_size_each'}),
+    fruit.loc[fruit.promo_per_size_each>0,['description','size','regular', 'promo', 'promo_per_size_each', 'pct_change_regular_to_promo_size_each']].dropna().rename(columns={'promo_per_size_each':'per_size_each'})
+    ]).sort_values(by=['per_size_each']).drop_duplicates(subset='description', keep='first')
+fruit_size_each['per_size_rank'] = fruit_size_each.groupby('per_size_each')['per_size_each'].transform('mean').rank(method='dense',ascending=True)
