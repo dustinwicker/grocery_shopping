@@ -14,21 +14,24 @@ client_secret = os.environ['kroger_client_secret']
 # Authentication requires base64 encoded id:secret, which is precalculated here
 encoded_client_token = base64.b64encode(f"{client_id}:{client_secret}".encode('ascii')).decode('ascii')
 
-# obtain access token
 api_url = 'https://api.kroger.com/v1'
-url = api_url + '/connect/oauth2/token'
-headers = {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'Authorization': f'Basic {encoded_client_token}',
-    }
-payload = {
-        'grant_type': "client_credentials",
-        'scope': ['product.compact'],
-    }
-# figure out why verify = False works
-response = requests.post(url, headers=headers, data=payload, verify=False)
-print(response.status_code)
-access_token = json.loads(response.text).get('access_token')
+
+# obtain access token
+def obtain_access_token():
+    url = api_url + '/connect/oauth2/token'
+    headers = {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'Authorization': f'Basic {encoded_client_token}',
+        }
+    payload = {
+            'grant_type': "client_credentials",
+            'scope': ['product.compact'],
+        }
+    # figure out why verify = False works
+    response = requests.post(url, headers=headers, data=payload, verify=False)
+    #print(response.status_code)
+    access_token = json.loads(response.text).get('access_token')
+    return access_token
 
 # Determine Edgewater King Sooper's location information to search store for products
 url = api_url + '/locations'
@@ -358,8 +361,8 @@ headers = {
 }
 
 params = {'filter.locationId': edgewater_location_id,
-          'filter.fulfillment':'csp',
-          'filter.term': 'fruit', #apples #kale #spinach,
+          'filter.fulfillment': 'csp',
+          'filter.term': 'fruit',
           'filter.limit': 50}
 response_three = requests.get(url, headers=headers, params=params, verify=False)
 print(response_three.status_code)
@@ -422,3 +425,51 @@ fruit_size_each = pd.concat([
     fruit.loc[fruit.promo_per_size_each>0,['description','size','regular', 'promo', 'promo_per_size_each', 'pct_change_regular_to_promo_size_each']].dropna().rename(columns={'promo_per_size_each':'per_size_each'})
     ]).sort_values(by=['per_size_each']).drop_duplicates(subset='description', keep='first')
 fruit_size_each['per_size_rank'] = fruit_size_each.groupby('per_size_each')['per_size_each'].transform('mean').rank(method='dense',ascending=True)
+
+# obtain access token using function
+access_token = obtain_access_token()
+
+# salad dressing
+filter_term = 'salad dressing'
+url = api_url + '/products'
+headers = {
+        'Accept': 'application/json',
+        'Authorization': f'Bearer {access_token}'
+}
+
+params = {'filter.locationId': edgewater_location_id,
+          'filter.fulfillment': 'csp',
+          'filter.term': filter_term,
+          'filter.limit': 50}
+response_three = requests.get(url, headers=headers, params=params, verify=False)
+print(response_three.status_code)
+sa = pd.DataFrame(json.loads(response_three.text)['data'])
+
+sal = pd.DataFrame()
+for s in range(50,250,50):
+    print(s)
+    params = {'filter.locationId': edgewater_location_id,
+              'filter.fulfillment': 'csp',
+              'filter.term': filter_term, #apples #kale #spinach,
+              'filter.limit': 50,
+              'filter.start': s}
+    response_three = requests.get(url, headers=headers, params=params, verify=False)
+    print(response_three.status_code)
+    s_ = pd.DataFrame(json.loads(response_three.text)['data'])
+    sal = pd.concat([sal, s_], axis=0)
+
+salad_dressing = pd.concat([sa, sal], axis=0)
+salad_dressing = salad_dressing.drop(columns=['productId', 'upc', 'images', 'itemInformation', 'temperature'])
+salad_dressing = pd.concat([salad_dressing.drop(['items'], axis=1), salad_dressing['items'].apply(lambda x: x[0]).apply(pd.Series)], axis=1)
+salad_dressing = pd.concat([salad_dressing.drop(['price'], axis=1), salad_dressing['price'].apply(pd.Series)], axis=1)
+
+# create size_a column
+salad_dressing['size_a'] = salad_dressing['size'].apply(lambda x: x.split())
+
+# clean up misc. sizes - check these on kroger site ###
+# size gives ct (number of tea bags) and oz (weight of package) - only need ct
+salad_dressing.loc[ ( salad_dressing['size'].str.contains('ct')) & ( salad_dressing['size'].str.contains('oz')), 'size' ] = \
+    salad_dressing.loc[ ( salad_dressing['size'].str.contains('ct')) & ( salad_dressing['size'].str.contains('oz')), 'size' ].apply(lambda x : x[:x.find('ct')+len('ct')])
+
+salad_dressing.loc[ ( salad_dressing['size'].str.contains('ct')) & ( salad_dressing['size'].str.contains('oz')), 'size' ].apply(lambda x : x.split()).apply(lambda x : x[0] ).astype(float) * \
+salad_dressing.loc[ ( salad_dressing['size'].str.contains('ct')) & ( salad_dressing['size'].str.contains('oz')), 'size' ].apply(lambda x : x.split()).apply(lambda x : x[3] ).astype(float)
