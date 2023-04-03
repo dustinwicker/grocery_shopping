@@ -29,7 +29,7 @@ def obtain_access_token():
         }
     # figure out why verify = False works
     response = requests.post(url, headers=headers, data=payload, verify=False)
-    #print(response.status_code)
+    print(response.status_code)
     access_token = json.loads(response.text).get('access_token')
     return access_token
 
@@ -67,82 +67,34 @@ params = {
 response_three = requests.get(url, headers=headers, params=params, verify=False)
 print(response_three.status_code)
 
-df = pd.DataFrame(json.loads(response_three.text)['data'])
-# drop 'images'
-df = df[['productId', 'upc', 'aisleLocations', 'brand', 'categories',
-       'countryOrigin', 'description', 'items', 'itemInformation',
-       'temperature']].sort_values(by=['brand', 'description'])
-df = pd.concat([df.drop(['items'], axis=1), df['items'].apply(lambda x: x[0]).apply(pd.Series)], axis=1)
-df = pd.concat([df.drop(['price'], axis=1), df['price'].apply(pd.Series)], axis=1)
+# obtain access token using function
+access_token = obtain_access_token()
 
-df.loc[(df['size'].str.contains('lb')) & (df['regularPerUnitEstimate'].isna()), 'regularPerUnitEstimate'] = \
-    df.loc[(df['size'].str.contains('lb')) & (df['regularPerUnitEstimate'].isna()),'regular']/\
-    df.loc[(df['size'].str.contains('lb')) & (df['regularPerUnitEstimate'].isna()),'size'].str.replace(' lb','').astype(int)
-df = df.rename(columns={'regularPerUnitEstimate':'regularPerWeight'})
-df.regularPerWeight = df.regularPerWeight.round(2)
-
-df.loc[(df['size'].str.contains('lb')) & (df['promoPerUnitEstimate'].isna()), 'promoPerUnitEstimate'] = \
-    df.loc[(df['size'].str.contains('lb')) & (df['promoPerUnitEstimate'].isna()),'promo']/\
-    df.loc[(df['size'].str.contains('lb')) & (df['promoPerUnitEstimate'].isna()),'size'].str.replace(' lb','').astype(int)
-df = df.rename(columns={'promoPerUnitEstimate':'promoPerWeight'})
-df.promoPerWeight = df.promoPerWeight.round(2)
-df.sort_values(by=['promoPerWeight', 'regularPerWeight'])[['description', 'regularPerWeight', 'promoPerWeight']]
-
-kale = pd.DataFrame(json.loads(response_three.text)['data'])
-# drop productId, upc, aisleLocations, images, itemInformation, temperature
-kale = kale.drop(columns=['productId', 'upc', 'aisleLocations', 'images', 'itemInformation', 'temperature'])
-kale = pd.concat([kale.drop(['items'], axis=1), kale['items'].apply(lambda x: x[0]).apply(pd.Series)], axis=1)
-kale = pd.concat([kale.drop(['price'], axis=1), kale['price'].apply(pd.Series)], axis=1)
-kale = pd.concat([kale.drop(['fulfillment'], axis=1), kale['fulfillment'].apply(pd.Series)], axis=1)
-kale['size_oz'] = np.nan
-kale.loc[kale['size'].str.contains('lb|oz'), 'size_oz'] = kale['size']
-kale.loc[kale['size'].str.contains('lb', na=False), 'size_oz'] = \
-    kale.loc[kale['size'].str.contains('lb', na=False), 'size'].str.replace('lb','').str.strip().astype(float) * oz_in_lb
-kale.loc[kale['size_oz'].str.contains('oz',na=False), 'size_oz'] = \
-    kale.loc[kale['size_oz'].str.contains('oz',na=False), 'size_oz'].str.replace('oz','').str.strip().astype(float)
-kale['regular_per_size_oz'] = kale['regular']/kale['size_oz']
-kale['promo_per_size_oz'] = kale['promo']/kale['size_oz']
-
-# get all pages
-spinach = pd.DataFrame(json.loads(response_three.text)['data'])
-spinach = spinach.drop(columns=['productId', 'upc', 'aisleLocations', 'images', 'itemInformation', 'temperature'])
-spinach = pd.concat([spinach.drop(['items'], axis=1), spinach['items'].apply(lambda x: x[0]).apply(pd.Series)], axis=1)
-spinach = pd.concat([spinach.drop(['price'], axis=1), spinach['price'].apply(pd.Series)], axis=1)
-spinach = pd.concat([spinach.drop(['fulfillment'], axis=1), spinach['fulfillment'].apply(pd.Series)], axis=1)
-spinach['size_oz'] = np.nan
-spinach.loc[spinach['size'].str.contains('lb|oz'), 'size_oz'] = spinach['size']
-
-spinach.loc[spinach['size'].str.contains('lb', na=False), 'size_oz'] = \
-    spinach.loc[spinach['size'].str.contains('lb', na=False), 'size'].str.replace('lb','').str.strip().astype(float) * oz_in_lb
-
-spinach.loc[spinach['size_oz'].str.contains('oz',na=False), 'size_oz'] = \
-    spinach.loc[spinach['size_oz'].str.contains('oz',na=False), 'size_oz'].str.replace('oz','').str.strip().astype(float)
-
-spinach['regular_per_size_oz'] = spinach['regular']/spinach['size_oz']
-spinach['promo_per_size_oz'] = spinach['promo']/spinach['size_oz']
-
+# search products
+url = api_url + '/products'
 
 # coffee
+filter_term = 'whole bean coffee'
 params = {
         'filter.locationId': edgewater_location_id,
         'filter.fulfillment': 'csp',
-        'filter.term': 'whole bean coffee', #apples #kale #spinach,
+        'filter.term': filter_term,
         'filter.limit': 50
 }
 response_three = requests.get(url, headers=headers, params=params, verify=False)
 print(response_three.status_code)
-c = pd.DataFrame(json.loads(response_three.text)['data'])
+coffee = pd.DataFrame(json.loads(response_three.text)['data'])
 params = {
         'filter.locationId': edgewater_location_id,
         'filter.fulfillment':'csp',
-        'filter.term': 'whole bean coffee', #apples #kale #spinach,
+        'filter.term': filter_term,
         'filter.limit': 50,
         'filter.start': 50
 }
 response_three = requests.get(url, headers=headers, params=params, verify=False)
 print(response_three.status_code)
-c_ = pd.DataFrame(json.loads(response_three.text)['data'])
-coffee = pd.concat([c,c_],axis=0)
+c = pd.DataFrame(json.loads(response_three.text)['data'])
+coffee = pd.concat([coffee, c],axis=0)
 coffee = coffee.drop(columns=['productId', 'upc', 'images', 'itemInformation', 'temperature'])
 coffee = pd.concat([coffee.drop(['items'], axis=1), coffee['items'].apply(lambda x: x[0]).apply(pd.Series)], axis=1)
 coffee = pd.concat([coffee.drop(['price'], axis=1), coffee['price'].apply(pd.Series)], axis=1)
@@ -152,60 +104,83 @@ coffee.loc[coffee['size_oz'].str.contains('oz',na=False), 'size_oz'] = \
     coffee.loc[coffee['size_oz'].str.contains('oz',na=False), 'size_oz'].str.replace('oz','').str.strip().astype(float)
 coffee['regular_per_size_oz'] = coffee['regular']/coffee['size_oz']
 coffee['promo_per_size_oz'] = coffee['promo']/coffee['size_oz']
-coffee['pct_change']=((coffee.promo_per_size_oz - coffee.regular_per_size_oz)/coffee.regular_per_size_oz)*100
-coffee.loc[coffee['promo_per_size_oz']>0.0].sort_values(by=['promo_per_size_oz', 'regular_per_size_oz'])
+coffee['pct_change_regular_to_promo_size_oz']=((coffee.promo_per_size_oz - coffee.regular_per_size_oz)/coffee.regular_per_size_oz)*100
+
+# check to see if any products remain that need sizing information
+print(coffee.loc[ coffee['size_oz'].isna(), ['description', 'size']])
+
+coffee_size_oz = pd.concat([
+    coffee[['description','size','regular', 'promo', 'regular_per_size_oz', 'pct_change_regular_to_promo_size_oz']].dropna().rename(columns={'regular_per_size_oz':'per_size_oz'}),
+    coffee.loc[coffee.promo_per_size_oz>0,['description','size','regular', 'promo', 'promo_per_size_oz', 'pct_change_regular_to_promo_size_oz']].dropna().rename(columns={'promo_per_size_oz':'per_size_oz'})
+    ]).sort_values(by=['per_size_oz']).drop_duplicates(subset='description', keep='first')
+coffee_size_oz['per_size_rank'] = coffee_size_oz.groupby('per_size_oz')['per_size_oz'].transform('mean').rank(method='dense',ascending=True)
+print(coffee_size_oz)
 
 # decaf coffee
+filter_term = 'whole bean decaf coffee'
 params = {
         'filter.locationId': edgewater_location_id,
         'filter.fulfillment':'csp',
-        'filter.term': 'whole bean decaf coffee', #apples #kale #spinach,
+        'filter.term': filter_term,
         'filter.limit': 50
 }
 response_three = requests.get(url, headers=headers, params=params, verify=False)
 print(response_three.status_code)
-c = pd.DataFrame(json.loads(response_three.text)['data'])
-params = {
-        'filter.locationId': edgewater_location_id,
-        'filter.fulfillment':'csp',
-        'filter.term': 'whole bean decaf coffee', #apples #kale #spinach,
-        'filter.limit': 50,
-        'filter.start': 50
-}
-response_three = requests.get(url, headers=headers, params=params, verify=False)
-print(response_three.status_code)
-c_ = pd.DataFrame(json.loads(response_three.text)['data'])
-coffee = pd.concat([c,c_],axis=0)
-coffee = coffee.drop(columns=['productId', 'upc', 'images', 'itemInformation', 'temperature'])
-coffee = pd.concat([coffee.drop(['items'], axis=1), coffee['items'].apply(lambda x: x[0]).apply(pd.Series)], axis=1)
-coffee = pd.concat([coffee.drop(['price'], axis=1), coffee['price'].apply(pd.Series)], axis=1)
-coffee['size_oz'] = np.nan
-coffee.loc[coffee['size'].str.contains('lb|oz'), 'size_oz'] = coffee['size']
-coffee.loc[coffee['size_oz'].str.contains('oz',na=False), 'size_oz'] = \
-    coffee.loc[coffee['size_oz'].str.contains('oz',na=False), 'size_oz'].str.replace('oz','').str.strip().astype(float)
-coffee['regular_per_size_oz'] = coffee['regular']/coffee['size_oz']
-coffee['promo_per_size_oz'] = coffee['promo']/coffee['size_oz']
-coffee['pct_change']=((coffee.promo_per_size_oz - coffee.regular_per_size_oz)/coffee.regular_per_size_oz)*100
-coffee.loc[coffee['promo_per_size_oz']>0.0].sort_values(by=['promo_per_size_oz', 'regular_per_size_oz'])
+decaf_coffee = pd.DataFrame(json.loads(response_three.text)['data'])
+# params = {
+#         'filter.locationId': edgewater_location_id,
+#         'filter.fulfillment':'csp',
+#         'filter.term': filter_term,
+#         'filter.limit': 50,
+#         'filter.start': 50
+# }
+# response_three = requests.get(url, headers=headers, params=params, verify=False)
+# print(response_three.status_code)
+# decaf_c = pd.DataFrame(json.loads(response_three.text)['data'])
+# decaf_coffee = pd.concat([decaf_coffee, decaf_c, axis=0])
+decaf_coffee = decaf_coffee.drop(columns=['productId', 'upc', 'images', 'itemInformation', 'temperature'])
+decaf_coffee = pd.concat([decaf_coffee.drop(['items'], axis=1), decaf_coffee['items'].apply(lambda x: x[0]).apply(pd.Series)], axis=1)
+decaf_coffee = pd.concat([decaf_coffee.drop(['price'], axis=1), decaf_coffee['price'].apply(pd.Series)], axis=1)
+decaf_coffee['size_oz'] = np.nan
+decaf_coffee.loc[decaf_coffee['size'].str.contains('lb|oz'), 'size_oz'] = decaf_coffee['size']
+decaf_coffee.loc[decaf_coffee['size_oz'].str.contains('oz',na=False), 'size_oz'] = \
+    decaf_coffee.loc[decaf_coffee['size_oz'].str.contains('oz',na=False), 'size_oz'].str.replace('oz','').str.strip().astype(float)
+decaf_coffee['regular_per_size_oz'] = decaf_coffee['regular']/decaf_coffee['size_oz']
+decaf_coffee['promo_per_size_oz'] = decaf_coffee['promo']/decaf_coffee['size_oz']
+decaf_coffee['pct_change_regular_to_promo_size_oz']=((decaf_coffee.promo_per_size_oz - decaf_coffee.regular_per_size_oz)/decaf_coffee.regular_per_size_oz)*100
+
+# check to see if any products remain that need sizing information
+print(decaf_coffee.loc[ decaf_coffee['size_oz'].isna(), ['description', 'size']])
+
+decaf_coffee_size_oz = pd.concat([
+    decaf_coffee[['description','size','regular', 'promo', 'regular_per_size_oz', 'pct_change_regular_to_promo_size_oz']].dropna().rename(columns={'regular_per_size_oz':'per_size_oz'}),
+    decaf_coffee.loc[decaf_coffee.promo_per_size_oz>0,['description','size','regular', 'promo', 'promo_per_size_oz', 'pct_change_regular_to_promo_size_oz']].dropna().rename(columns={'promo_per_size_oz':'per_size_oz'})
+    ]).sort_values(by=['per_size_oz']).drop_duplicates(subset='description', keep='first')
+decaf_coffee_size_oz['per_size_rank'] = decaf_coffee_size_oz.groupby('per_size_oz')['per_size_oz'].transform('mean').rank(method='dense',ascending=True)
+print(decaf_coffee_size_oz)
 
 # vegetables
-url = api_url + '/products'
-headers = {
-        'Accept': 'application/json',
-        'Authorization': f'Bearer {access_token}'
-}
+filter_term = 'fresh vegetables'
+params = {'filter.locationId': edgewater_location_id,
+          'filter.fulfillment': 'csp',
+          'filter.term': filter_term,
+          'filter.limit': 50}
+response_three = requests.get(url, headers=headers, params=params, verify=False)
+print(response_three.status_code)
+v = pd.DataFrame(json.loads(response_three.text)['data'])
+
 ve = pd.DataFrame()
-for s in [1,50,100,150,200,250]:
+for s in [50,100,150,200,250]:
     print(s)
     params = {'filter.locationId': edgewater_location_id,
           'filter.fulfillment':'csp',
-          'filter.term': 'fresh vegetables', #apples #kale #spinach,
+          'filter.term': filter_term,
           'filter.limit': 50,
           'filter.start': s}
     response_three = requests.get(url, headers=headers, params=params, verify=False)
     print(response_three.status_code)
-    v = pd.DataFrame(json.loads(response_three.text)['data'])
-    ve = pd.concat([ve, v], axis=0)
+    v_ = pd.DataFrame(json.loads(response_three.text)['data'])
+    ve = pd.concat([v, v_], axis=0)
 ve = ve.drop(columns=['productId', 'upc', 'images', 'itemInformation', 'temperature'])
 ve = pd.concat([ve.drop(['items'], axis=1), ve['items'].apply(lambda x: x[0]).apply(pd.Series)], axis=1)
 ve = pd.concat([ve.drop(['price'], axis=1), ve['price'].apply(pd.Series)], axis=1)
@@ -222,9 +197,9 @@ ve['size_a'] = ve['size'].apply(lambda x: x.split())
 # create size_oz column (can compare oz, lb, fl oz)
 ve['size_oz'] = np.nan
 # oz, oz., fl oz, fl oz.
-# lb, lb.
+# lb, lb., lbs
 ve['size_oz'] = ve['size_a'].apply(lambda x: float(x[0]) if ( (x[-1] == 'oz' or x[-1] == 'oz.') and (len(x) == 2 or len(x) == 3) )
-                                    else ( float(x[0])*oz_in_lb if ( (x[-1] == 'lb' or x[-1] == 'lb.') and (len(x) == 2) ) else np.nan ) )
+                                    else ( float(x[0])*oz_in_lb if ( (x[-1] == 'lb' or x[-1] == 'lb.' or x[-1] == 'lbs') and (len(x) == 2) ) else np.nan ) )
 
 # create size_each column (bunch, ct, each)
 ve['size_each'] = np.nan
