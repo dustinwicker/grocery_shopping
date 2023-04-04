@@ -233,6 +233,7 @@ veg_size_each['per_size_rank'] = veg_size_each.groupby('per_size_each')['per_siz
 
 # decaf and herbal tea
 url = api_url + '/products'
+filter_term = 'decaf tea'
 headers = {
         'Accept': 'application/json',
         'Authorization': f'Bearer {access_token}'
@@ -240,13 +241,14 @@ headers = {
 # decaf
 params = {'filter.locationId': edgewater_location_id,
           'filter.fulfillment':'csp',
-          'filter.term': 'decaf tea', #apples #kale #spinach,
+          'filter.term': filter_term, #apples #kale #spinach,
           'filter.limit': 50}
 response_three = requests.get(url, headers=headers, params=params, verify=False)
 print(response_three.status_code)
 decaf_tea = pd.DataFrame(json.loads(response_three.text)['data'])
 
 # herbal
+filter_term = 'herbal tea'
 params = {'filter.locationId': edgewater_location_id,
           'filter.fulfillment':'csp',
           'filter.term': 'herbal tea', #apples #kale #spinach,
