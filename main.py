@@ -70,9 +70,6 @@ print(response_three.status_code)
 # obtain access token using function
 access_token = obtain_access_token()
 
-# search products
-url = api_url + '/products'
-
 # coffee
 filter_term = 'whole bean coffee'
 params = {
@@ -117,10 +114,10 @@ coffee_size_oz['per_size_rank'] = coffee_size_oz.groupby('per_size_oz')['per_siz
 print(coffee_size_oz)
 
 # decaf coffee
-filter_term = 'whole bean decaf coffee'
+filter_term = 'decaf coffee'
 params = {
         'filter.locationId': edgewater_location_id,
-        'filter.fulfillment':'csp',
+        'filter.fulfillment': 'csp',
         'filter.term': filter_term,
         'filter.limit': 50
 }
@@ -231,8 +228,10 @@ veg_size_each = pd.concat([
     ]).sort_values(by=['per_size_each']).drop_duplicates(subset='description', keep='first')
 veg_size_each['per_size_rank'] = veg_size_each.groupby('per_size_each')['per_size_each'].transform('mean').rank(method='dense',ascending=True)
 
+print(veg_size_oz)
+print(veg_size_each)
+
 # decaf and herbal tea
-url = api_url + '/products'
 filter_term = 'decaf tea'
 headers = {
         'Accept': 'application/json',
@@ -240,7 +239,7 @@ headers = {
 }
 # decaf
 params = {'filter.locationId': edgewater_location_id,
-          'filter.fulfillment':'csp',
+          'filter.fulfillment': 'csp',
           'filter.term': filter_term, #apples #kale #spinach,
           'filter.limit': 50}
 response_three = requests.get(url, headers=headers, params=params, verify=False)
@@ -262,7 +261,7 @@ for s in [50,100,150]:
     print(s)
     params = {'filter.locationId': edgewater_location_id,
               'filter.fulfillment':'csp',
-              'filter.term': 'herbal tea', #apples #kale #spinach,
+              'filter.term': filter_term, #apples #kale #spinach,
               'filter.limit': 50,
               'filter.start':s}
     response_three = requests.get(url, headers=headers, params=params, verify=False)
