@@ -33,6 +33,15 @@ def obtain_access_token():
     access_token = json.loads(response.text).get('access_token')
     return access_token
 
+# Define products url and necessary headers info to search products
+def product_search():
+    url = api_url + '/products'
+    headers = {
+        'Accept': 'application/json',
+        'Authorization': f'Bearer {access_token}'
+    }
+    return url, headers
+
 # Determine Edgewater King Sooper's location information to search store for products
 url = api_url + '/locations'
 headers = {
@@ -52,15 +61,14 @@ location_df = pd.concat([location_df.drop(['address'], axis=1), location_df['add
 edgewater_location_id = location_df.loc[( location_df.addressLine1.str.contains('1725 Sheridan') ) &
                                         ( location_df.city=='Edgewater' ), 'locationId'].values[0]
 
+# obtain access token using function
+access_token = obtain_access_token()
+url, headers = product_search()
+
 # Search products at the Edgewater King Soopers
-url = api_url + '/products'
-headers = {
-        'Accept': 'application/json',
-        'Authorization': f'Bearer {access_token}'
-}
 params = {
         'filter.locationId': edgewater_location_id,
-        'filter.term': 'coffee', #apples #kale #spinach
+        'filter.term': 'coffee',
         'filter.limit': 50,
         'page':1
 }
@@ -233,37 +241,32 @@ print(veg_size_each)
 
 # decaf and herbal tea
 filter_term = 'decaf tea'
-headers = {
-        'Accept': 'application/json',
-        'Authorization': f'Bearer {access_token}'
-}
 # decaf
 params = {'filter.locationId': edgewater_location_id,
           'filter.fulfillment': 'csp',
-          'filter.term': filter_term, #apples #kale #spinach,
+          'filter.term': filter_term,
           'filter.limit': 50}
 response_three = requests.get(url, headers=headers, params=params, verify=False)
 print(response_three.status_code)
 decaf_tea = pd.DataFrame(json.loads(response_three.text)['data'])
-
 # herbal
 filter_term = 'herbal tea'
 params = {'filter.locationId': edgewater_location_id,
-          'filter.fulfillment':'csp',
-          'filter.term': 'herbal tea', #apples #kale #spinach,
+          'filter.fulfillment': 'csp',
+          'filter.term': filter_term,
           'filter.limit': 50}
 response_three = requests.get(url, headers=headers, params=params, verify=False)
 print(response_three.status_code)
 h = pd.DataFrame(json.loads(response_three.text)['data'])
 
 he = pd.DataFrame()
-for s in [50,100,150]:
+for s in [50, 100, 150]:
     print(s)
     params = {'filter.locationId': edgewater_location_id,
-              'filter.fulfillment':'csp',
-              'filter.term': filter_term, #apples #kale #spinach,
+              'filter.fulfillment': 'csp',
+              'filter.term': filter_term,
               'filter.limit': 50,
-              'filter.start':s}
+              'filter.start': s}
     response_three = requests.get(url, headers=headers, params=params, verify=False)
     print(response_three.status_code)
     h_ = pd.DataFrame(json.loads(response_three.text)['data'])
@@ -329,16 +332,14 @@ tea_size_ct = pd.concat([
     ]).sort_values(by=['per_size_ct']).drop_duplicates(subset='description', keep='first')
 tea_size_ct['per_size_rank'] = tea_size_ct.groupby('per_size_ct')['per_size_ct'].transform('mean').rank(method='dense',ascending=True)
 
-# fruit
-url = api_url + '/products'
-headers = {
-        'Accept': 'application/json',
-        'Authorization': f'Bearer {access_token}'
-}
+print(tea_size_oz)
+print(tea_size_ct)
 
+# fruit
+filter_term = 'fruit'
 params = {'filter.locationId': edgewater_location_id,
           'filter.fulfillment': 'csp',
-          'filter.term': 'fruit',
+          'filter.term': filter_term,
           'filter.limit': 50}
 response_three = requests.get(url, headers=headers, params=params, verify=False)
 print(response_three.status_code)
@@ -348,10 +349,10 @@ fr = pd.DataFrame()
 for s in range(50,250,50):
     print(s)
     params = {'filter.locationId': edgewater_location_id,
-              'filter.fulfillment':'csp',
-              'filter.term': 'fruit', #apples #kale #spinach,
+              'filter.fulfillment': 'csp',
+              'filter.term': filter_term,
               'filter.limit': 50,
-              'filter.start':s}
+              'filter.start': s}
     response_three = requests.get(url, headers=headers, params=params, verify=False)
     print(response_three.status_code)
     f_ = pd.DataFrame(json.loads(response_three.text)['data'])
@@ -402,17 +403,11 @@ fruit_size_each = pd.concat([
     ]).sort_values(by=['per_size_each']).drop_duplicates(subset='description', keep='first')
 fruit_size_each['per_size_rank'] = fruit_size_each.groupby('per_size_each')['per_size_each'].transform('mean').rank(method='dense',ascending=True)
 
-# obtain access token using function
-access_token = obtain_access_token()
+print(fruit_size_oz)
+print(fruit_size_each)
 
 # salad dressing
 filter_term = 'salad dressing'
-url = api_url + '/products'
-headers = {
-        'Accept': 'application/json',
-        'Authorization': f'Bearer {access_token}'
-}
-
 params = {'filter.locationId': edgewater_location_id,
           'filter.fulfillment': 'csp',
           'filter.term': filter_term,
@@ -439,13 +434,79 @@ salad_dressing = salad_dressing.drop(columns=['productId', 'upc', 'images', 'ite
 salad_dressing = pd.concat([salad_dressing.drop(['items'], axis=1), salad_dressing['items'].apply(lambda x: x[0]).apply(pd.Series)], axis=1)
 salad_dressing = pd.concat([salad_dressing.drop(['price'], axis=1), salad_dressing['price'].apply(pd.Series)], axis=1)
 
-# create size_a column
-salad_dressing['size_a'] = salad_dressing['size'].apply(lambda x: x.split())
-
 # clean up misc. sizes - check these on kroger site ###
 # size gives ct (number of tea bags) and oz (weight of package) - only need ct
 salad_dressing.loc[ ( salad_dressing['size'].str.contains('ct')) & ( salad_dressing['size'].str.contains('oz')), 'size' ] = \
-    salad_dressing.loc[ ( salad_dressing['size'].str.contains('ct')) & ( salad_dressing['size'].str.contains('oz')), 'size' ].apply(lambda x : x[:x.find('ct')+len('ct')])
+    ( salad_dressing.loc[ ( salad_dressing['size'].str.contains('ct')) & ( salad_dressing['size'].str.contains('oz')), 'size' ].apply(lambda x : x.split()).apply(lambda x : x[0] ).astype(float) * \
+    salad_dressing.loc[ ( salad_dressing['size'].str.contains('ct')) & ( salad_dressing['size'].str.contains('oz')), 'size' ].apply(lambda x : x.split()).apply(lambda x : x[3] ).astype(float) ).astype(str) + \
+    ' ' + salad_dressing.loc[ ( salad_dressing['size'].str.contains('ct')) & ( salad_dressing['size'].str.contains('oz')), 'size' ].apply(lambda x : x.split()).apply(lambda x : x[-1] )
 
-salad_dressing.loc[ ( salad_dressing['size'].str.contains('ct')) & ( salad_dressing['size'].str.contains('oz')), 'size' ].apply(lambda x : x.split()).apply(lambda x : x[0] ).astype(float) * \
-salad_dressing.loc[ ( salad_dressing['size'].str.contains('ct')) & ( salad_dressing['size'].str.contains('oz')), 'size' ].apply(lambda x : x.split()).apply(lambda x : x[3] ).astype(float)
+# create size_a column
+salad_dressing['size_a'] = salad_dressing['size'].apply(lambda x: x.split())
+
+# create size_oz column (can compare oz, lb, fl oz)
+salad_dressing['size_oz'] = np.nan
+# oz, oz., fl oz, fl oz.
+salad_dressing['size_oz'] = salad_dressing['size_a'].apply(lambda x: float(x[0]) if ( (x[-1] == 'oz' or x[-1] == 'oz.') and ( len(x) == 2 or len(x) == 3 ) ) else np.nan )
+
+# create size_each column (ct)
+salad_dressing['size_each'] = np.nan
+salad_dressing['size_each'] = salad_dressing['size_a'].apply(lambda x: float(x[0]) if (x[-1] == 'ct' ) and (len(x) == 2)
+                                     else ( float(x[0][:-2]) if x[0][-2:] == 'ct' else np.nan) )
+
+# check to see if any products remain that need sizing information
+print(salad_dressing.loc[ (salad_dressing['size_oz'].isna() & salad_dressing['size_each'].isna()), ['description', 'size_a', 'size']])
+
+# column creation
+salad_dressing['regular_per_size_oz'] = salad_dressing['regular']/salad_dressing['size_oz']
+salad_dressing['promo_per_size_oz'] = salad_dressing['promo']/salad_dressing['size_oz']
+salad_dressing['pct_change_regular_to_promo_size_oz']= ((salad_dressing.promo_per_size_oz - salad_dressing.regular_per_size_oz)/salad_dressing.regular_per_size_oz)*100
+
+salad_dressing['regular_per_size_each'] = salad_dressing['regular']/salad_dressing['size_each']
+salad_dressing['promo_per_size_each'] = salad_dressing['promo']/salad_dressing['size_each']
+salad_dressing['pct_change_regular_to_promo_size_each']= ((salad_dressing.promo_per_size_each - salad_dressing.regular_per_size_each)/salad_dressing.regular_per_size_each)*100
+
+# size_oz price
+salad_dressing_size_oz = pd.concat([
+    salad_dressing[['description','size','regular', 'promo', 'regular_per_size_oz', 'pct_change_regular_to_promo_size_oz']].dropna().rename(columns={'regular_per_size_oz':'per_size_oz'}),
+    salad_dressing.loc[salad_dressing.promo_per_size_oz>0,['description','size','regular', 'promo', 'promo_per_size_oz', 'pct_change_regular_to_promo_size_oz']].dropna().rename(columns={'promo_per_size_oz':'per_size_oz'})
+    ]).sort_values(by=['per_size_oz']).drop_duplicates(subset='description', keep='first')
+salad_dressing_size_oz['per_size_rank'] = salad_dressing_size_oz.groupby('per_size_oz')['per_size_oz'].transform('mean').rank(method='dense',ascending=True)
+
+# size_each price
+salad_dressing_size_each = pd.concat([
+    salad_dressing[['description','size','regular', 'promo', 'regular_per_size_each', 'pct_change_regular_to_promo_size_each']].dropna().rename(columns={'regular_per_size_each':'per_size_each'}),
+    salad_dressing.loc[salad_dressing.promo_per_size_each>0,['description','size','regular', 'promo', 'promo_per_size_each', 'pct_change_regular_to_promo_size_each']].dropna().rename(columns={'promo_per_size_each':'per_size_each'})
+    ]).sort_values(by=['per_size_each']).drop_duplicates(subset='description', keep='first')
+salad_dressing_size_each['per_size_rank'] = salad_dressing_size_each.groupby('per_size_each')['per_size_each'].transform('mean').rank(method='dense',ascending=True)
+
+print(salad_dressing_size_oz)
+print(salad_dressing_size_each)
+
+# eggs
+filter_term = 'eggs'
+params = {'filter.locationId': edgewater_location_id,
+          'filter.fulfillment': 'csp',
+          'filter.term': filter_term,
+          'filter.limit': 50}
+response_three = requests.get(url, headers=headers, params=params, verify=False)
+print(response_three.status_code)
+sa = pd.DataFrame(json.loads(response_three.text)['data'])
+
+sal = pd.DataFrame()
+for s in range(50,250,50):
+    print(s)
+    params = {'filter.locationId': edgewater_location_id,
+              'filter.fulfillment': 'csp',
+              'filter.term': filter_term,
+              'filter.limit': 50,
+              'filter.start': s}
+    response_three = requests.get(url, headers=headers, params=params, verify=False)
+    print(response_three.status_code)
+    s_ = pd.DataFrame(json.loads(response_three.text)['data'])
+    sal = pd.concat([sal, s_], axis=0)
+
+salad_dressing = pd.concat([sa, sal], axis=0)
+salad_dressing = salad_dressing.drop(columns=['productId', 'upc', 'images', 'itemInformation', 'temperature'])
+salad_dressing = pd.concat([salad_dressing.drop(['items'], axis=1), salad_dressing['items'].apply(lambda x: x[0]).apply(pd.Series)], axis=1)
+salad_dressing = pd.concat([salad_dressing.drop(['price'], axis=1), salad_dressing['price'].apply(pd.Series)], axis=1)
