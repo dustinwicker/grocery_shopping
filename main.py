@@ -75,9 +75,6 @@ params = {
 response_three = requests.get(url, headers=headers, params=params, verify=False)
 print(response_three.status_code)
 
-# obtain access token using function
-access_token = obtain_access_token()
-
 # coffee
 filter_term = 'whole bean coffee'
 params = {
@@ -491,10 +488,10 @@ params = {'filter.locationId': edgewater_location_id,
           'filter.limit': 50}
 response_three = requests.get(url, headers=headers, params=params, verify=False)
 print(response_three.status_code)
-sa = pd.DataFrame(json.loads(response_three.text)['data'])
+e = pd.DataFrame(json.loads(response_three.text)['data'])
 
-sal = pd.DataFrame()
-for s in range(50,250,50):
+eg = pd.DataFrame()
+for s in range(50, 100, 50):
     print(s)
     params = {'filter.locationId': edgewater_location_id,
               'filter.fulfillment': 'csp',
@@ -503,10 +500,59 @@ for s in range(50,250,50):
               'filter.start': s}
     response_three = requests.get(url, headers=headers, params=params, verify=False)
     print(response_three.status_code)
-    s_ = pd.DataFrame(json.loads(response_three.text)['data'])
-    sal = pd.concat([sal, s_], axis=0)
+    e_ = pd.DataFrame(json.loads(response_three.text)['data'])
+    eg = pd.concat([eg, e_], axis=0)
 
-salad_dressing = pd.concat([sa, sal], axis=0)
-salad_dressing = salad_dressing.drop(columns=['productId', 'upc', 'images', 'itemInformation', 'temperature'])
-salad_dressing = pd.concat([salad_dressing.drop(['items'], axis=1), salad_dressing['items'].apply(lambda x: x[0]).apply(pd.Series)], axis=1)
-salad_dressing = pd.concat([salad_dressing.drop(['price'], axis=1), salad_dressing['price'].apply(pd.Series)], axis=1)
+eggs = pd.concat([e, eg], axis=0)
+# limit results to only those with 'egg' in the description
+eggs = eggs.loc[eggs.description.str.contains('egg',case=False)]
+eggs = eggs.drop(columns=['productId', 'upc', 'images', 'itemInformation', 'temperature'])
+eggs = pd.concat([eggs.drop(['items'], axis=1), eggs['items'].apply(lambda x: x[0]).apply(pd.Series)], axis=1)
+eggs = pd.concat([eggs.drop(['price'], axis=1), eggs['price'].apply(pd.Series)], axis=1)
+
+# Misc sizes - need to fix all
+eggs.loc[eggs['size'] == 'large dozen', 'size'] = '12 ct'
+# only look at ct for now - will need to fix (liquid eggs for this weekend possibly?)
+eggs = eggs.loc[eggs['size'].str[-2:]== 'ct']
+
+# create size_a column
+eggs['size_a'] = eggs['size'].apply(lambda x: x.split())
+
+# create size_oz column (can compare oz, lb, fl oz)
+#eggs['size_oz'] = np.nan
+# oz, oz., fl oz, fl oz.
+#eggs['size_oz'] = eggs['size_a'].apply(lambda x: float(x[0]) if ( (x[-1] == 'oz' or x[-1] == 'oz.') and ( len(x) == 2 or len(x) == 3 ) ) else np.nan )
+
+# create size_each column (ct)
+eggs['size_each'] = np.nan
+eggs['size_each'] = eggs['size_a'].apply(lambda x: float(x[0]) if (x[-1] == 'ct' ) and (len(x) == 2)
+                                     else ( float(x[0][:-2]) if x[0][-2:] == 'ct' else np.nan) )
+
+# check to see if any products remain that need sizing information
+print(salad_dressing.loc[ (salad_dressing['size_oz'].isna() & salad_dressing['size_each'].isna()), ['description', 'size_a', 'size']])
+
+# column creation
+#salad_dressing['regular_per_size_oz'] = salad_dressing['regular']/salad_dressing['size_oz']
+#salad_dressing['promo_per_size_oz'] = salad_dressing['promo']/salad_dressing['size_oz']
+#salad_dressing['pct_change_regular_to_promo_size_oz']= ((salad_dressing.promo_per_size_oz - salad_dressing.regular_per_size_oz)/salad_dressing.regular_per_size_oz)*100
+
+eggs['regular_per_size_each'] = eggs['regular']/eggs['size_each']
+eggs['promo_per_size_each'] = eggs['promo']/eggs['size_each']
+eggs['pct_change_regular_to_promo_size_each']= ((eggs.promo_per_size_each - eggs.regular_per_size_each)/eggs.regular_per_size_each)*100
+
+# size_oz price
+# salad_dressing_size_oz = pd.concat([
+#     salad_dressing[['description','size','regular', 'promo', 'regular_per_size_oz', 'pct_change_regular_to_promo_size_oz']].dropna().rename(columns={'regular_per_size_oz':'per_size_oz'}),
+#     salad_dressing.loc[salad_dressing.promo_per_size_oz>0,['description','size','regular', 'promo', 'promo_per_size_oz', 'pct_change_regular_to_promo_size_oz']].dropna().rename(columns={'promo_per_size_oz':'per_size_oz'})
+#     ]).sort_values(by=['per_size_oz']).drop_duplicates(subset='description', keep='first')
+# salad_dressing_size_oz['per_size_rank'] = salad_dressing_size_oz.groupby('per_size_oz')['per_size_oz'].transform('mean').rank(method='dense',ascending=True)
+
+# size_each price
+eggs_size_each = pd.concat([
+    eggs[['description','size','regular', 'promo', 'regular_per_size_each', 'pct_change_regular_to_promo_size_each']].dropna().rename(columns={'regular_per_size_each':'per_size_each'}),
+    eggs.loc[eggs.promo_per_size_each>0,['description','size','regular', 'promo', 'promo_per_size_each', 'pct_change_regular_to_promo_size_each']].dropna().rename(columns={'promo_per_size_each':'per_size_each'})
+    ]).sort_values(by=['per_size_each']).drop_duplicates(subset='description', keep='first')
+eggs_size_each['per_size_rank'] = eggs_size_each.groupby('per_size_each')['per_size_each'].transform('mean').rank(method='dense',ascending=True)
+
+#print(eggs_size_oz)
+print(eggs_size_each)
