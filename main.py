@@ -618,7 +618,8 @@ eggs = eggs.loc[eggs.description.str.contains('egg',case=False)]
 eggs = eggs.drop(columns=['productId', 'upc', 'images', 'itemInformation', 'temperature'])
 eggs = pd.concat([eggs.drop(['items'], axis=1), eggs['items'].apply(lambda x: x[0]).apply(pd.Series)], axis=1)
 eggs = pd.concat([eggs.drop(['price'], axis=1), eggs['price'].apply(pd.Series)], axis=1)
-
+print(eggs.shape)
+print(eggs['size'].value_counts())
 # Misc sizes - need to fix all
 eggs.loc[eggs['size'] == 'large dozen', 'size'] = '12 ct'
 # only look at ct for now - will need to fix (liquid eggs for this weekend possibly?)
