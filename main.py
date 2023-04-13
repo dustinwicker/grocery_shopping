@@ -639,7 +639,7 @@ eggs['size_each'] = eggs['size_a'].apply(lambda x: float(x[0]) if (x[-1] == 'ct'
                                      else ( float(x[0][:-2]) if x[0][-2:] == 'ct' else np.nan) )
 
 # check to see if any products remain that need sizing information
-print(salad_dressing.loc[ (salad_dressing['size_oz'].isna() & salad_dressing['size_each'].isna()), ['description', 'size_a', 'size']])
+# fix - print(eggs.loc[ (eggs['size_oz'].isna() & eggs['size_each'].isna()), ['description', 'size_a', 'size']])
 
 # column creation
 #salad_dressing['regular_per_size_oz'] = salad_dressing['regular']/salad_dressing['size_oz']
