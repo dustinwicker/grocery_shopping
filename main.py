@@ -29,13 +29,12 @@ encoded_client_token = base64.b64encode(f"{client_id}:{client_secret}".encode('a
 
 # Measurement conversions
 oz_in_lb, oz_in_qt, oz_in_l, oz_in_gal = 16, 32, 33.81, 128
-# filter parameters (csp indicates pick up availability)
-filter_fulfillment, filter_limit = 'csp', 50
 
 # Mountain timezone
 pytz_mtn = pytz.timezone('US/Mountain')
 
 api_url = 'https://api.kroger.com/v1'
+filter_fulfillment, filter_limit, filter_start = 'csp', 50, 50
 
 
 def obtain_access_token():
@@ -76,46 +75,48 @@ def location(zipcode, address, city):
     location_id = location_df.loc[(location_df.addressLine1.str.contains(address)) & (location_df.city == city), 'locationId'].values[0]
     return location_id
 
-def product_search():
-    """products url and necessary headers info to search products"""
+
+def product_search(filter_term):
+    """search term and return info in form of DataFrame"""
+    # products url and necessary headers info to search products
     url = api_url + '/products'
     headers = {
         'Accept': 'application/json',
-        'Authorization': f'Bearer {access_token}'
-    }
-    return url, headers
+        'Authorization': f'Bearer {access_token}' }
+    # filter parameters (csp indicates pick up availability)
+    params = {'filter.locationId': edgewater_location_id, 'filter.fulfillment': f'{filter_fulfillment}',
+          'filter.term': f'{filter_term}', 'filter.limit': filter_limit}
+    response = requests.get(url, headers=headers, params=params, verify=False)
+    print(response.status_code)
+    meta = pd.DataFrame(json.loads(response.text)['meta'])
+    if meta.loc['total'].values[0] > filter_limit:
+        a = pd.DataFrame(json.loads(response.text)['data'])
+        aa = pd.DataFrame()
+        f_s = filter_start
+        for s in range(f_s, meta.loc['total'].values[0], f_s):
+            try:
+                params.update({'filter.start': s})
+                print(params, s)
+                response = requests.get(url, headers=headers, params=params, verify=False)
+                print(response.status_code)
+                a_ = pd.DataFrame(json.loads(response.text)['data'])
+                aa = pd.concat([aa, a_], axis=0)
+            except KeyError:
+                pass
+        df = pd.concat([a, aa],axis=0)
+    else:
+        df = pd.DataFrame(json.loads(response_three.text)['data'])
+    df = df.drop(columns=['productId', 'upc', 'images', 'itemInformation', 'temperature'])
+    df = pd.concat([df.drop(['items'], axis=1), df['items'].apply(lambda x: x[0]).apply(pd.Series)], axis=1)
+    df = pd.concat([df.drop(['price'], axis=1), df['price'].apply(pd.Series)], axis=1)
+    print(df.shape)
+    return df
 
 # obtain access token using function
 access_token = obtain_access_token()
 edgewater_location_id = location(zipcode=80204, address='1725 Sheridan', city='Edgewater')
-url, headers = product_search()
-
-# Search products at the Edgewater King Soopers
 # coffee
-filter_term = 'whole bean coffee'
-params = {
-        'filter.locationId': edgewater_location_id,
-        'filter.fulfillment': 'csp',
-        'filter.term': filter_term,
-        'filter.limit': 50
-}
-response_three = requests.get(url, headers=headers, params=params, verify=False)
-print(response_three.status_code)
-coffee = pd.DataFrame(json.loads(response_three.text)['data'])
-params = {
-        'filter.locationId': edgewater_location_id,
-        'filter.fulfillment':'csp',
-        'filter.term': filter_term,
-        'filter.limit': 50,
-        'filter.start': 50
-}
-response_three = requests.get(url, headers=headers, params=params, verify=False)
-print(response_three.status_code)
-c = pd.DataFrame(json.loads(response_three.text)['data'])
-coffee = pd.concat([coffee, c],axis=0)
-coffee = coffee.drop(columns=['productId', 'upc', 'images', 'itemInformation', 'temperature'])
-coffee = pd.concat([coffee.drop(['items'], axis=1), coffee['items'].apply(lambda x: x[0]).apply(pd.Series)], axis=1)
-coffee = pd.concat([coffee.drop(['price'], axis=1), coffee['price'].apply(pd.Series)], axis=1)
+coffee = product_search(filter_term='whole bean coffee')
 coffee['size_oz'] = np.nan
 coffee.loc[coffee['size'].str.contains('lb|oz'), 'size_oz'] = coffee['size']
 coffee.loc[coffee['size_oz'].str.contains('oz',na=False), 'size_oz'] = \
@@ -136,20 +137,8 @@ coffee_size_oz['runtime_mst'] = dt.datetime.now(pytz_mtn)
 print(coffee_size_oz)
 
 # decaf coffee
-filter_term = 'decaf coffee'
-params = {
-        'filter.locationId': edgewater_location_id,
-        'filter.fulfillment': 'csp',
-        'filter.term': filter_term,
-        'filter.limit': 50
-}
-response_three = requests.get(url, headers=headers, params=params, verify=False)
-print(response_three.status_code)
-decaf_coffee = pd.DataFrame(json.loads(response_three.text)['data'])
-decaf_coffee = decaf_coffee.drop(columns=['productId', 'upc', 'images', 'itemInformation', 'temperature'])
-decaf_coffee = pd.concat([decaf_coffee.drop(['items'], axis=1), decaf_coffee['items'].apply(lambda x: x[0]).apply(pd.Series)], axis=1)
-decaf_coffee = pd.concat([decaf_coffee.drop(['price'], axis=1), decaf_coffee['price'].apply(pd.Series)], axis=1)
-print(decaf_coffee.shape)
+decaf_coffee = product_search(filter_term='decaf coffee')
+
 # Remove coffee pods from options
 decaf_coffee = decaf_coffee[~(decaf_coffee['description'].str.findall(r'Coffe{1,2}.*Pods').map(lambda d: len(d)) > 0)]
 decaf_coffee['size_oz'] = np.nan
@@ -169,34 +158,12 @@ decaf_coffee_size_oz = pd.concat([
     ]).sort_values(by=['per_size_oz']).drop_duplicates(subset='description', keep='first')
 decaf_coffee_size_oz['per_size_rank'] = decaf_coffee_size_oz.groupby('per_size_oz')['per_size_oz'].transform('mean').rank(method='dense',ascending=True)
 decaf_coffee_size_oz['runtime_mst'] = dt.datetime.now(pytz_mtn)
-print(decaf_coffee_size_oz)
 
 coffee_size_oz_df = pd.concat([coffee_size_oz,
                                decaf_coffee_size_oz], axis=0).sort_values(by=['per_size_oz'])
 
 # coffee creamer
-filter_term = 'non dairy coffee creamer'
-params = {'filter.locationId': edgewater_location_id, 'filter.fulfillment': filter_fulfillment,
-          'filter.term': filter_term, 'filter.limit': filter_limit}
-response_three = requests.get(url, headers=headers, params=params, verify=False)
-print(response_three.status_code)
-meta = pd.DataFrame(json.loads(response_three.text)['meta'])
-if meta.loc['total'].values[0] > filter_limit:
-    c = pd.DataFrame(json.loads(response_three.text)['data'])
-    cc = pd.DataFrame()
-    filter_start = 50
-    for s in range(filter_start,meta.loc['total'].values[0],filter_start):
-        params.update({'filter.start': s})
-        print(s)
-        response_three = requests.get(url, headers=headers, params=params, verify=False)
-        print(response_three.status_code)
-        c_ = pd.DataFrame(json.loads(response_three.text)['data'])
-        cc = pd.concat([cc, c_], axis=0)
-coffee_creamer = pd.concat([c, cc],axis=0)
-coffee_creamer = coffee_creamer.drop(columns=['productId', 'upc', 'images', 'itemInformation', 'temperature'])
-coffee_creamer = pd.concat([coffee_creamer.drop(['items'], axis=1), coffee_creamer['items'].apply(lambda x: x[0]).apply(pd.Series)], axis=1)
-coffee_creamer = pd.concat([coffee_creamer.drop(['price'], axis=1), coffee_creamer['price'].apply(pd.Series)], axis=1)
-
+coffee_creamer = product_search(filter_term='non dairy coffee creamer')
 # clean up misc. sizes
 coffee_creamer.loc[coffee_creamer['size'] == '1/2 gal', 'size'] = '0.5 gal'
 
@@ -224,30 +191,10 @@ coffee_creamer_size_oz = pd.concat([
     coffee_creamer.loc[coffee_creamer.promo_per_size_oz>0,['description','size','regular', 'promo', 'promo_per_size_oz', 'pct_change_regular_to_promo_size_oz']].dropna().rename(columns={'promo_per_size_oz':'per_size_oz'})
     ]).sort_values(by=['per_size_oz']).drop_duplicates(subset='description', keep='first')
 coffee_creamer_size_oz['per_size_rank'] = coffee_creamer_size_oz.groupby('per_size_oz')['per_size_oz'].transform('mean').rank(method='dense',ascending=True)
+coffee_creamer_size_oz['runtime_mst'] = dt.datetime.now(pytz_mtn)
 
 # non dairy milk (can be used coffee creamer, stand alone beverage, milkshade ingredient
-filter_term = 'non dairy milk'
-params = {'filter.locationId': edgewater_location_id, 'filter.fulfillment': filter_fulfillment,
-          'filter.term': filter_term, 'filter.limit': filter_limit}
-response_three = requests.get(url, headers=headers, params=params, verify=False)
-print(response_three.status_code)
-meta = pd.DataFrame(json.loads(response_three.text)['meta'])
-if meta.loc['total'].values[0] > filter_limit:
-    m = pd.DataFrame(json.loads(response_three.text)['data'])
-    mm = pd.DataFrame()
-    filter_start = 50
-    for s in range(filter_start,meta.loc['total'].values[0],filter_start):
-        params.update({'filter.start': s})
-        print(s)
-        response_three = requests.get(url, headers=headers, params=params, verify=False)
-        print(response_three.status_code)
-        m_ = pd.DataFrame(json.loads(response_three.text)['data'])
-        mm = pd.concat([mm, m_], axis=0)
-non_dairy_milk = pd.concat([m, mm],axis=0)
-non_dairy_milk = non_dairy_milk.drop(columns=['productId', 'upc', 'images', 'itemInformation', 'temperature'])
-non_dairy_milk = pd.concat([non_dairy_milk.drop(['items'], axis=1), non_dairy_milk['items'].apply(lambda x: x[0]).apply(pd.Series)], axis=1)
-non_dairy_milk = pd.concat([non_dairy_milk.drop(['price'], axis=1), non_dairy_milk['price'].apply(pd.Series)], axis=1)
-
+non_dairy_milk = product_search(filter_term='non dairy milk')
 # clean up misc. sizes
 non_dairy_milk.loc[non_dairy_milk['size'] == '1/2 gal', 'size'] = '0.5 gal'
 non_dairy_milk.loc[non_dairy_milk['size'] == '6 ct / 8 fl oz', 'size'] = str(6*8) + ' fl oz'
@@ -276,90 +223,66 @@ non_dairy_milk_size_oz = pd.concat([
     non_dairy_milk.loc[non_dairy_milk.promo_per_size_oz>0,['description','size','regular', 'promo', 'promo_per_size_oz', 'pct_change_regular_to_promo_size_oz']].dropna().rename(columns={'promo_per_size_oz':'per_size_oz'})
     ]).sort_values(by=['per_size_oz']).drop_duplicates(subset='description', keep='first')
 non_dairy_milk_size_oz['per_size_rank'] = non_dairy_milk_size_oz.groupby('per_size_oz')['per_size_oz'].transform('mean').rank(method='dense',ascending=True)
+non_dairy_milk_size_oz['runtime_mst'] = dt.datetime.now(pytz_mtn)
 
-print(coffee_creamer_size_oz)
-print('\n')
-print(non_dairy_milk_size_oz)
-
-milk_coffee_creamer_size_oz_df =
+milk_coffee_creamer_size_oz_df = pd.concat([
+    coffee_creamer_size_oz, non_dairy_milk_size_oz], axis=0).sort_values(by=['per_size_oz'])
 
 # vegetables
-filter_term = 'fresh vegetables'
-params = {'filter.locationId': edgewater_location_id, 'filter.fulfillment': filter_fulfillment,
-          'filter.term': filter_term, 'filter.limit': filter_limit}
-response_three = requests.get(url, headers=headers, params=params, verify=False)
-print(response_three.status_code)
-meta = pd.DataFrame(json.loads(response_three.text)['meta'])
-if meta.loc['total'].values[0] > filter_limit:
-    v = pd.DataFrame(json.loads(response_three.text)['data'])
-    vv = pd.DataFrame()
-    filter_start = 50
-    for s in range(filter_start,meta.loc['total'].values[0],filter_start):
-        try:
-            params.update({'filter.start': s})
-            print(params, s)
-            response_three = requests.get(url, headers=headers, params=params, verify=False)
-            print(response_three.status_code)
-            v_ = pd.DataFrame(json.loads(response_three.text)['data'])
-            vv = pd.concat([vv, v_], axis=0)
-        except KeyError:
-            pass
-v = pd.concat([v, vv],axis=0)
-
-v = v.drop(columns=['productId', 'upc', 'images', 'itemInformation', 'temperature'])
-v = pd.concat([v.drop(['items'], axis=1), v['items'].apply(lambda x: x[0]).apply(pd.Series)], axis=1)
-v = pd.concat([v.drop(['price'], axis=1), v['price'].apply(pd.Series)], axis=1)
-print(v['size'].value_counts())
+veg = product_search(filter_term = 'fresh vegetables', filter_fulfillment = 'csp', filter_limit = 50, filter_start = 50)
+print(veg['size'].value_counts())
 # clean up misc. sizes
-v.loc[v['size'] == 'each', 'size'] = '1 each'
-v.loc[v['size'] == '1 pt / 10 oz', 'size'] = '10 oz'
-v.loc[v['size'] == '4 ct / 3 oz', 'size'] = '12 oz'
-v.loc[v['size'] == '4 ct / 10.5 oz', 'size'] = '42 oz'
-v.loc[v['size'] == '4 ct / 15.25 oz', 'size'] = '61 oz'
+veg.loc[veg['size'] == 'each', 'size'] = '1 each'
+veg.loc[veg['size'] == '1 pt / 10 oz', 'size'] = '10 oz'
+veg.loc[veg['size'] == '4 ct / 3 oz', 'size'] = '12 oz'
+veg.loc[veg['size'] == '4 ct / 10.5 oz', 'size'] = '42 oz'
+veg.loc[veg['size'] == '4 ct / 15.25 oz', 'size'] = '61 oz'
 
 # create size_a column
-v['size_a'] = v['size'].apply(lambda x: x.split())
+veg['size_a'] = veg['size'].apply(lambda x: x.split())
 
 # create size_oz column (can compare oz, lb, fl oz)
-v['size_oz'] = np.nan
+veg['size_oz'] = np.nan
 # oz, oz., fl oz, fl oz.
 # lb, lb., lbs
-v['size_oz'] = v['size_a'].apply(
+veg['size_oz'] = veg['size_a'].apply(
     lambda x: float(x[0]) if ( (x[-1] == 'oz' or x[-1] == 'oz.') and (len(x) == 2 or len(x) == 3) )
     else ( float(x[0])*oz_in_lb if ( (x[-1] == 'lb' or x[-1] == 'lb.' or x[-1] == 'lbs') and (len(x) == 2) )
     else np.nan ) )
 
 # create size_each column (bunch, ct, each)
-v['size_each'] = np.nan
-v['size_each'] = v['size_a'].apply(
+veg['size_each'] = np.nan
+veg['size_each'] = veg['size_a'].apply(
     lambda x: float(x[0]) if (x[-1] == 'ct' or x[-1] == 'each' or x[-1] == 'bunch' ) and (len(x) == 2)
     else np.nan )
 
 # check to see if any products remain that need sizing information
-print(v.loc[ (v['size_oz'].isna() & v['size_each'].isna()), ['description', 'size_a', 'size']])
+print(veg.loc[ (veg['size_oz'].isna() & veg['size_each'].isna()), ['description', 'size_a', 'size']])
 
 # column creation
-v['regular_per_size_oz'] = v['regular']/v['size_oz']
-v['promo_per_size_oz'] = v['promo']/v['size_oz']
-v['pct_change_regular_to_promo_size_oz']=((v.promo_per_size_oz - v.regular_per_size_oz)/v.regular_per_size_oz)*100
+veg['regular_per_size_oz'] = veg['regular']/veg['size_oz']
+veg['promo_per_size_oz'] = veg['promo']/veg['size_oz']
+veg['pct_change_regular_to_promo_size_oz']=((veg.promo_per_size_oz - veg.regular_per_size_oz)/veg.regular_per_size_oz)*100
 
-v['regular_per_size_each'] = v['regular']/v['size_each']
-v['promo_per_size_each'] = v['promo']/v['size_each']
-v['pct_change_regular_to_promo_size_each']=((v.promo_per_size_each - v.regular_per_size_each)/v.regular_per_size_each)*100
+veg['regular_per_size_each'] = veg['regular']/veg['size_each']
+veg['promo_per_size_each'] = veg['promo']/veg['size_each']
+veg['pct_change_regular_to_promo_size_each']=((veg.promo_per_size_each - veg.regular_per_size_each)/veg.regular_per_size_each)*100
 
 # size_oz price
 veg_size_oz = pd.concat([
-    v[['description','size','regular', 'promo', 'regular_per_size_oz', 'pct_change_regular_to_promo_size_oz']].dropna().rename(columns={'regular_per_size_oz':'per_size_oz'}),
-    v.loc[v.promo_per_size_oz>0,['description','size','regular', 'promo', 'promo_per_size_oz', 'pct_change_regular_to_promo_size_oz']].dropna().rename(columns={'promo_per_size_oz':'per_size_oz'})
+    veg[['description','size','regular', 'promo', 'regular_per_size_oz', 'pct_change_regular_to_promo_size_oz']].dropna().rename(columns={'regular_per_size_oz':'per_size_oz'}),
+    veg.loc[veg.promo_per_size_oz>0,['description','size','regular', 'promo', 'promo_per_size_oz', 'pct_change_regular_to_promo_size_oz']].dropna().rename(columns={'promo_per_size_oz':'per_size_oz'})
     ]).sort_values(by=['per_size_oz']).drop_duplicates(subset='description', keep='first')
 veg_size_oz['per_size_rank'] = veg_size_oz.groupby('per_size_oz')['per_size_oz'].transform('mean').rank(method='dense',ascending=True)
+veg_size_oz['runtime_mst'] = dt.datetime.now(pytz_mtn)
 
 # size_each price
 veg_size_each = pd.concat([
-    v[['description','size','regular', 'promo', 'regular_per_size_each', 'pct_change_regular_to_promo_size_each']].dropna().rename(columns={'regular_per_size_each':'per_size_each'}),
-    v.loc[v.promo_per_size_each>0,['description','size','regular', 'promo', 'promo_per_size_each', 'pct_change_regular_to_promo_size_each']].dropna().rename(columns={'promo_per_size_each':'per_size_each'})
+    veg[['description','size','regular', 'promo', 'regular_per_size_each', 'pct_change_regular_to_promo_size_each']].dropna().rename(columns={'regular_per_size_each':'per_size_each'}),
+    veg.loc[veg.promo_per_size_each>0,['description','size','regular', 'promo', 'promo_per_size_each', 'pct_change_regular_to_promo_size_each']].dropna().rename(columns={'promo_per_size_each':'per_size_each'})
     ]).sort_values(by=['per_size_each']).drop_duplicates(subset='description', keep='first')
 veg_size_each['per_size_rank'] = veg_size_each.groupby('per_size_each')['per_size_each'].transform('mean').rank(method='dense',ascending=True)
+veg_size_each['runtime_mst'] = dt.datetime.now(pytz_mtn)
 
 print(veg_size_oz)
 print(veg_size_each)
@@ -460,32 +383,9 @@ tea_size_ct['per_size_rank'] = tea_size_ct.groupby('per_size_ct')['per_size_ct']
 print(tea_size_oz)
 print(tea_size_ct)
 
-# fruit
-filter_term = 'fruit'
-params = {'filter.locationId': edgewater_location_id, 'filter.fulfillment': filter_fulfillment,
-          'filter.term': filter_term, 'filter.limit': filter_limit}
-response_three = requests.get(url, headers=headers, params=params, verify=False)
-print(response_three.status_code)
-meta = pd.DataFrame(json.loads(response_three.text)['meta'])
-if meta.loc['total'].values[0] > filter_limit:
-    f = pd.DataFrame(json.loads(response_three.text)['data'])
-    ff = pd.DataFrame()
-    filter_start = 50
-    for s in range(filter_start,meta.loc['total'].values[0],filter_start):
-        try:
-            params.update({'filter.start': s})
-            print(params, s)
-            response_three = requests.get(url, headers=headers, params=params, verify=False)
-            print(response_three.status_code)
-            f_ = pd.DataFrame(json.loads(response_three.text)['data'])
-            ff = pd.concat([ff, f_], axis=0)
-        except KeyError:
-            pass
-fruit = pd.concat([f, ff],axis=0)
-print(fruit.shape)
-fruit = fruit.drop(columns=['productId', 'upc', 'images', 'itemInformation', 'temperature'])
-fruit = pd.concat([fruit.drop(['items'], axis=1), fruit['items'].apply(lambda x: x[0]).apply(pd.Series)], axis=1)
-fruit = pd.concat([fruit.drop(['price'], axis=1), fruit['price'].apply(pd.Series)], axis=1)
+access_token = obtain_access_token()
+edgewater_location_id = location(zipcode=80204, address='1725 Sheridan', city='Edgewater')
+fruit = product_search(filter_term='fruit')
 
 print(fruit['size'].value_counts())
 # clean up misc. sizes
@@ -522,6 +422,7 @@ fruit_size_oz = pd.concat([
     fruit.loc[fruit.promo_per_size_oz>0,['description','size','regular', 'promo', 'promo_per_size_oz', 'pct_change_regular_to_promo_size_oz']].dropna().rename(columns={'promo_per_size_oz':'per_size_oz'})
     ]).sort_values(by=['per_size_oz']).drop_duplicates(subset='description', keep='first')
 fruit_size_oz['per_size_rank'] = fruit_size_oz.groupby('per_size_oz')['per_size_oz'].transform('mean').rank(method='dense',ascending=True)
+fruit_size_oz['runtime_mst'] = dt.datetime.now(pytz_mtn)
 
 # size_each price
 fruit_size_each = pd.concat([
@@ -529,37 +430,15 @@ fruit_size_each = pd.concat([
     fruit.loc[fruit.promo_per_size_each>0,['description','size','regular', 'promo', 'promo_per_size_each', 'pct_change_regular_to_promo_size_each']].dropna().rename(columns={'promo_per_size_each':'per_size_each'})
     ]).sort_values(by=['per_size_each']).drop_duplicates(subset='description', keep='first')
 fruit_size_each['per_size_rank'] = fruit_size_each.groupby('per_size_each')['per_size_each'].transform('mean').rank(method='dense',ascending=True)
+fruit_size_each['runtime_mst'] = dt.datetime.now(pytz_mtn)
 
-print(fruit_size_oz)
-print('\n')
-print(fruit_size_each)
+# could keep upc for drop_duplicates to use as subset
+veg_fruit_size_oz_df = pd.concat([veg_size_oz.reset_index(drop=True),
+                                  fruit_size_oz.reset_index(drop=True)], axis=0).\
+    drop_duplicates(subset=['description', 'size']).reset_index(drop=True).sort_values(by=['per_size_oz'])
 
 # salad dressing
-filter_term = 'salad dressing'
-params = {'filter.locationId': edgewater_location_id, 'filter.fulfillment': filter_fulfillment,
-          'filter.term': filter_term, 'filter.limit': filter_limit}
-response_three = requests.get(url, headers=headers, params=params, verify=False)
-print(response_three.status_code)
-meta = pd.DataFrame(json.loads(response_three.text)['meta'])
-if meta.loc['total'].values[0] > filter_limit:
-    sa = pd.DataFrame(json.loads(response_three.text)['data'])
-    ss = pd.DataFrame()
-    filter_start = 50
-    for s in range(filter_start,meta.loc['total'].values[0],filter_start):
-        try:
-            params.update({'filter.start': s})
-            print(params, s)
-            response_three = requests.get(url, headers=headers, params=params, verify=False)
-            print(response_three.status_code)
-            s_ = pd.DataFrame(json.loads(response_three.text)['data'])
-            ss = pd.concat([ss, s_], axis=0)
-        except KeyError:
-            pass
-salad_dressing = pd.concat([sa, ss], axis=0)
-salad_dressing = salad_dressing.drop(columns=['productId', 'upc', 'images', 'itemInformation', 'temperature'])
-salad_dressing = pd.concat([salad_dressing.drop(['items'], axis=1), salad_dressing['items'].apply(lambda x: x[0]).apply(pd.Series)], axis=1)
-salad_dressing = pd.concat([salad_dressing.drop(['price'], axis=1), salad_dressing['price'].apply(pd.Series)], axis=1)
-print(salad_dressing.shape)
+salad_dressing = product_search(filter_term='salad dressing', filter_fulfillment='csp', filter_limit=50, filter_start=50)
 print(salad_dressing['size'].value_counts())
 # clean up misc. sizes - check these on kroger site ###
 # size gives ct (number of tea bags) and oz (weight of package) - only need ct
