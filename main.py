@@ -225,6 +225,7 @@ non_dairy_milk_size_oz = pd.concat([
 non_dairy_milk_size_oz['per_size_rank'] = non_dairy_milk_size_oz.groupby('per_size_oz')['per_size_oz'].transform('mean').rank(method='dense',ascending=True)
 non_dairy_milk_size_oz['runtime_mst'] = dt.datetime.now(pytz_mtn)
 
+# Create dataframe
 milk_coffee_creamer_size_oz_df = pd.concat([
     coffee_creamer_size_oz, non_dairy_milk_size_oz], axis=0).sort_values(by=['per_size_oz'])
 
