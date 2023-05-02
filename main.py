@@ -1,11 +1,12 @@
 import os
 import json
 import base64
-import config
 import requests
 import json
 import pandas as pd
 import numpy as np
+import datetime as dt
+import pytz
 
 # Increase maximum width in characters of columns - will put all columns in same line in console readout
 pd.set_option('expand_frame_repr', False)
@@ -13,6 +14,9 @@ pd.set_option('expand_frame_repr', False)
 pd.set_option('display.max_rows', 250)
 # Able to read entire value in each column (no longer truncating values)
 pd.set_option('display.max_colwidth', None)
+
+# Current directory
+os.chdir("C:/Users/dustin.wicker/PycharmProjects/grocery_shopping")
 
 # Load in json
 with open('info.json', 'r') as i:
@@ -28,10 +32,14 @@ oz_in_lb, oz_in_qt, oz_in_l, oz_in_gal = 16, 32, 33.81, 128
 # filter parameters (csp indicates pick up availability)
 filter_fulfillment, filter_limit = 'csp', 50
 
+# Mountain timezone
+pytz_mtn = pytz.timezone('US/Mountain')
+
 api_url = 'https://api.kroger.com/v1'
 
-# obtain access token
+
 def obtain_access_token():
+    """access token"""
     url = api_url + '/connect/oauth2/token'
     headers = {
             'Content-Type': 'application/x-www-form-urlencoded',
@@ -47,8 +55,29 @@ def obtain_access_token():
     access_token = json.loads(response.text).get('access_token')
     return access_token
 
-# Define products url and necessary headers info to search products
+
+def location(zipcode, address, city):
+    """location information to search store for products"""
+    url = api_url + '/locations'
+    headers = {
+        'Accept': 'application/json',
+        'Authorization': f'Bearer {access_token}'
+    }
+    params = {
+        'filter.zipCode.near': f'{zipcode}'
+    }
+    response = requests.get(url, headers=headers, params=params, verify=False)
+    print(response.status_code)
+
+    # Create DataFrame
+    location_df = pd.DataFrame(json.loads(response.text)['data'])[['locationId', 'chain', 'address']]
+    # Drop address column, split address column (dict) into separate columns
+    location_df = pd.concat([location_df.drop(['address'], axis=1), location_df['address'].apply(pd.Series)], axis=1)
+    location_id = location_df.loc[(location_df.addressLine1.str.contains(address)) & (location_df.city == city), 'locationId'].values[0]
+    return location_id
+
 def product_search():
+    """products url and necessary headers info to search products"""
     url = api_url + '/products'
     headers = {
         'Accept': 'application/json',
@@ -58,28 +87,7 @@ def product_search():
 
 # obtain access token using function
 access_token = obtain_access_token()
-
-# Determine Edgewater King Sooper's location information to search store for products
-url = api_url + '/locations'
-headers = {
-        'Accept': 'application/json',
-        'Authorization': f'Bearer {access_token}'
-}
-params = {
-        'filter.zipCode.near': '80204'
-}
-response_two = requests.get(url, headers=headers, params=params, verify=False)
-print(response_two.status_code)
-
-# Create DataFrame
-location_df = pd.DataFrame(json.loads(response_two.text)['data'])[['locationId', 'chain', 'address']]
-# Drop address column, split address column (dict) into separate columns
-location_df = pd.concat([location_df.drop(['address'], axis=1), location_df['address'].apply(pd.Series)], axis=1)
-edgewater_location_id = location_df.loc[( location_df.addressLine1.str.contains('1725 Sheridan') ) &
-                                        ( location_df.city=='Edgewater' ), 'locationId'].values[0]
-
-# obtain access token using function
-access_token = obtain_access_token()
+edgewater_location_id = location(zipcode=80204, address='1725 Sheridan', city='Edgewater')
 url, headers = product_search()
 
 # Search products at the Edgewater King Soopers
@@ -124,6 +132,7 @@ coffee_size_oz = pd.concat([
     coffee.loc[coffee.promo_per_size_oz>0,['description','size','regular', 'promo', 'promo_per_size_oz', 'pct_change_regular_to_promo_size_oz']].dropna().rename(columns={'promo_per_size_oz':'per_size_oz'})
     ]).sort_values(by=['per_size_oz']).drop_duplicates(subset='description', keep='first')
 coffee_size_oz['per_size_rank'] = coffee_size_oz.groupby('per_size_oz')['per_size_oz'].transform('mean').rank(method='dense',ascending=True)
+coffee_size_oz['runtime_mst'] = dt.datetime.now(pytz_mtn)
 print(coffee_size_oz)
 
 # decaf coffee
@@ -159,7 +168,11 @@ decaf_coffee_size_oz = pd.concat([
     decaf_coffee.loc[decaf_coffee.promo_per_size_oz>0,['description','size','regular', 'promo', 'promo_per_size_oz', 'pct_change_regular_to_promo_size_oz']].dropna().rename(columns={'promo_per_size_oz':'per_size_oz'})
     ]).sort_values(by=['per_size_oz']).drop_duplicates(subset='description', keep='first')
 decaf_coffee_size_oz['per_size_rank'] = decaf_coffee_size_oz.groupby('per_size_oz')['per_size_oz'].transform('mean').rank(method='dense',ascending=True)
+decaf_coffee_size_oz['runtime_mst'] = dt.datetime.now(pytz_mtn)
 print(decaf_coffee_size_oz)
+
+coffee_size_oz_df = pd.concat([coffee_size_oz,
+                               decaf_coffee_size_oz], axis=0).sort_values(by=['per_size_oz'])
 
 # coffee creamer
 filter_term = 'non dairy coffee creamer'
@@ -211,7 +224,6 @@ coffee_creamer_size_oz = pd.concat([
     coffee_creamer.loc[coffee_creamer.promo_per_size_oz>0,['description','size','regular', 'promo', 'promo_per_size_oz', 'pct_change_regular_to_promo_size_oz']].dropna().rename(columns={'promo_per_size_oz':'per_size_oz'})
     ]).sort_values(by=['per_size_oz']).drop_duplicates(subset='description', keep='first')
 coffee_creamer_size_oz['per_size_rank'] = coffee_creamer_size_oz.groupby('per_size_oz')['per_size_oz'].transform('mean').rank(method='dense',ascending=True)
-print(coffee_creamer_size_oz)
 
 # non dairy milk (can be used coffee creamer, stand alone beverage, milkshade ingredient
 filter_term = 'non dairy milk'
@@ -264,7 +276,12 @@ non_dairy_milk_size_oz = pd.concat([
     non_dairy_milk.loc[non_dairy_milk.promo_per_size_oz>0,['description','size','regular', 'promo', 'promo_per_size_oz', 'pct_change_regular_to_promo_size_oz']].dropna().rename(columns={'promo_per_size_oz':'per_size_oz'})
     ]).sort_values(by=['per_size_oz']).drop_duplicates(subset='description', keep='first')
 non_dairy_milk_size_oz['per_size_rank'] = non_dairy_milk_size_oz.groupby('per_size_oz')['per_size_oz'].transform('mean').rank(method='dense',ascending=True)
+
+print(coffee_creamer_size_oz)
+print('\n')
 print(non_dairy_milk_size_oz)
+
+milk_coffee_creamer_size_oz_df =
 
 # vegetables
 filter_term = 'fresh vegetables'
@@ -514,6 +531,7 @@ fruit_size_each = pd.concat([
 fruit_size_each['per_size_rank'] = fruit_size_each.groupby('per_size_each')['per_size_each'].transform('mean').rank(method='dense',ascending=True)
 
 print(fruit_size_oz)
+print('\n')
 print(fruit_size_each)
 
 # salad dressing
@@ -589,6 +607,7 @@ salad_dressing_size_each = pd.concat([
 salad_dressing_size_each['per_size_rank'] = salad_dressing_size_each.groupby('per_size_each')['per_size_each'].transform('mean').rank(method='dense',ascending=True)
 
 print(salad_dressing_size_oz)
+print('\n')
 print(salad_dressing_size_each)
 
 # eggs
@@ -666,3 +685,72 @@ eggs_size_each['per_size_rank'] = eggs_size_each.groupby('per_size_each')['per_s
 
 #print(eggs_size_oz)
 print(eggs_size_each)
+
+# peanut butter
+filter_term = 'peanut butter'
+params = {'filter.locationId': edgewater_location_id, 'filter.fulfillment': filter_fulfillment,
+          'filter.term': filter_term, 'filter.limit': filter_limit}
+response_three = requests.get(url, headers=headers, params=params, verify=False)
+print(response_three.status_code)
+meta = pd.DataFrame(json.loads(response_three.text)['meta'])
+if meta.loc['total'].values[0] > filter_limit:
+    p = pd.DataFrame(json.loads(response_three.text)['data'])
+    pb = pd.DataFrame()
+    filter_start = 50
+    for s in range(filter_start,meta.loc['total'].values[0],filter_start):
+        try:
+            params.update({'filter.start': s})
+            print(params, s)
+            response_three = requests.get(url, headers=headers, params=params, verify=False)
+            print(response_three.status_code)
+            pb_ = pd.DataFrame(json.loads(response_three.text)['data'])
+            pb = pd.concat([pb, pb_], axis=0)
+        except KeyError:
+            pass
+peanut_butter = pd.concat([p, pb],axis=0)
+print(peanut_butter.shape)
+peanut_butter = peanut_butter.drop(columns=['productId', 'upc', 'images', 'itemInformation', 'temperature'])
+peanut_butter = pd.concat([peanut_butter.drop(['items'], axis=1), peanut_butter['items'].apply(lambda x: x[0]).apply(pd.Series)], axis=1)
+peanut_butter = pd.concat([peanut_butter.drop(['price'], axis=1), peanut_butter['price'].apply(pd.Series)], axis=1)
+print(peanut_butter['description'].value_counts()[:50])
+
+# Remove products that contain peanut butter (i.e. Reese's Peanut Butter Cups)
+peanut_butter = peanut_butter.loc[~(peanut_butter.description.str.contains('Candy|Bar|Cereal|Cookie|Cups|Granola|Cracker|Treats|'
+                                                           'Ice Cream|Protein Shake|Dessert|Pretzel|Sandwich|'
+                                                           'Chocolate|Bone|Biscuits|Creme Pies|Mix|Baking Chips|'
+                                                           'Clusters|Wafers'))]
+print(peanut_butter.shape)
+print(peanut_butter[['description', 'size']])
+
+# # clean up misc. sizes
+peanut_butter.loc[peanut_butter['size'] == '8 ct / 1.15 oz', 'size'] = str(float(8*1.15)) + ' oz'
+
+# Fix size issue - get ones with slashes' index
+# str.strip
+# Remove dots from last position in each string
+# str.split(' ')
+
+# create size_a column
+peanut_butter['size_a'] = peanut_butter['size'].apply(lambda x: x.split())
+
+# create size_oz column (can compare oz, lb, fl oz)
+peanut_butter['size_oz'] = np.nan
+# oz, oz.
+peanut_butter['size_oz'] = peanut_butter['size_a'].apply(lambda x: float(x[0]) if ( (x[-1] == 'oz' or x[-1] == 'oz.') and (len(x) == 2 or len(x) == 3) )
+                                                                                    else np.nan )
+
+# check to see if any products remain that need sizing information
+print(peanut_butter.loc[ peanut_butter['size_oz'].isna(), ['description', 'size_a', 'size']])
+
+# column creation
+peanut_butter['regular_per_size_oz'] = peanut_butter['regular']/peanut_butter['size_oz']
+peanut_butter['promo_per_size_oz'] = peanut_butter['promo']/peanut_butter['size_oz']
+peanut_butter['pct_change_regular_to_promo_size_oz']=((peanut_butter.promo_per_size_oz - peanut_butter.regular_per_size_oz)/peanut_butter.regular_per_size_oz)*100
+
+# size_oz price
+peanut_butter_size_oz = pd.concat([
+    peanut_butter[['description','size','regular', 'promo', 'regular_per_size_oz', 'pct_change_regular_to_promo_size_oz']].dropna().rename(columns={'regular_per_size_oz':'per_size_oz'}),
+    peanut_butter.loc[peanut_butter.promo_per_size_oz>0,['description','size','regular', 'promo', 'promo_per_size_oz', 'pct_change_regular_to_promo_size_oz']].dropna().rename(columns={'promo_per_size_oz':'per_size_oz'})
+    ]).sort_values(by=['per_size_oz']).drop_duplicates(subset='description', keep='first')
+peanut_butter_size_oz['per_size_rank'] = peanut_butter_size_oz.groupby('per_size_oz')['per_size_oz'].transform('mean').rank(method='dense',ascending=True)
+print(peanut_butter_size_oz)
