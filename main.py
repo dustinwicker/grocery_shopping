@@ -1,5 +1,4 @@
 import os
-import json
 import base64
 import requests
 import json
@@ -26,13 +25,10 @@ client_id = info['kroger_client_id']
 client_secret = info['kroger_client_secret']
 # Authentication requires base64 encoded id:secret, which is precalculated here
 encoded_client_token = base64.b64encode(f"{client_id}:{client_secret}".encode('ascii')).decode('ascii')
-
 # Measurement conversions
 oz_in_lb, oz_in_qt, oz_in_l, oz_in_gal = 16, 32, 33.81, 128
-
 # Mountain timezone
 pytz_mtn = pytz.timezone('US/Mountain')
-
 api_url = 'https://api.kroger.com/v1'
 filter_fulfillment, filter_limit, filter_start = 'csp', 50, 50
 
@@ -105,7 +101,7 @@ def product_search(filter_term):
                 pass
         df = pd.concat([a, aa],axis=0)
     else:
-        df = pd.DataFrame(json.loads(response_three.text)['data'])
+        df = pd.DataFrame(json.loads(response.text)['data'])
     df = df.drop(columns=['productId', 'upc', 'images', 'itemInformation', 'temperature'])
     df = pd.concat([df.drop(['items'], axis=1), df['items'].apply(lambda x: x[0]).apply(pd.Series)], axis=1)
     df = pd.concat([df.drop(['price'], axis=1), df['price'].apply(pd.Series)], axis=1)
@@ -230,7 +226,7 @@ milk_coffee_creamer_size_oz_df = pd.concat([
     coffee_creamer_size_oz, non_dairy_milk_size_oz], axis=0).sort_values(by=['per_size_oz'])
 
 # vegetables
-veg = product_search(filter_term = 'fresh vegetables', filter_fulfillment = 'csp', filter_limit = 50, filter_start = 50)
+veg = product_search(filter_term='fresh vegetables')
 print(veg['size'].value_counts())
 # clean up misc. sizes
 veg.loc[veg['size'] == 'each', 'size'] = '1 each'
@@ -289,42 +285,9 @@ print(veg_size_oz)
 print(veg_size_each)
 
 # decaf and herbal tea
-filter_term = 'decaf tea'
-# decaf
-params = {'filter.locationId': edgewater_location_id,
-          'filter.fulfillment': 'csp',
-          'filter.term': filter_term,
-          'filter.limit': 50}
-response_three = requests.get(url, headers=headers, params=params, verify=False)
-print(response_three.status_code)
-decaf_tea = pd.DataFrame(json.loads(response_three.text)['data'])
-# herbal
-filter_term = 'herbal tea'
-params = {'filter.locationId': edgewater_location_id,
-          'filter.fulfillment': 'csp',
-          'filter.term': filter_term,
-          'filter.limit': 50}
-response_three = requests.get(url, headers=headers, params=params, verify=False)
-print(response_three.status_code)
-h = pd.DataFrame(json.loads(response_three.text)['data'])
-
-he = pd.DataFrame()
-for s in [50, 100, 150]:
-    print(s)
-    params = {'filter.locationId': edgewater_location_id,
-              'filter.fulfillment': 'csp',
-              'filter.term': filter_term,
-              'filter.limit': 50,
-              'filter.start': s}
-    response_three = requests.get(url, headers=headers, params=params, verify=False)
-    print(response_three.status_code)
-    h_ = pd.DataFrame(json.loads(response_three.text)['data'])
-    he = pd.concat([he, h_], axis=0)
-
-tea = pd.concat([decaf_tea, h, he], axis=0)
-tea = tea.drop(columns=['productId', 'upc', 'images', 'itemInformation', 'temperature'])
-tea = pd.concat([tea.drop(['items'], axis=1), tea['items'].apply(lambda x: x[0]).apply(pd.Series)], axis=1)
-tea = pd.concat([tea.drop(['price'], axis=1), tea['price'].apply(pd.Series)], axis=1)
+decaf_tea = product_search(filter_term='decaf tea')
+herbal_tea = product_search(filter_term='herbal tea')
+tea = pd.concat([decaf_tea, herbal_tea], axis=0)
 
 # clean up misc. sizes - check these on kroger site ###
 # size gives ct (number of tea bags) and oz (weight of package) - only need ct
@@ -384,8 +347,7 @@ tea_size_ct['per_size_rank'] = tea_size_ct.groupby('per_size_ct')['per_size_ct']
 print(tea_size_oz)
 print(tea_size_ct)
 
-access_token = obtain_access_token()
-edgewater_location_id = location(zipcode=80204, address='1725 Sheridan', city='Edgewater')
+# fruit
 fruit = product_search(filter_term='fruit')
 
 print(fruit['size'].value_counts())
@@ -567,32 +529,7 @@ eggs_size_each['per_size_rank'] = eggs_size_each.groupby('per_size_each')['per_s
 print(eggs_size_each)
 
 # peanut butter
-filter_term = 'peanut butter'
-params = {'filter.locationId': edgewater_location_id, 'filter.fulfillment': filter_fulfillment,
-          'filter.term': filter_term, 'filter.limit': filter_limit}
-response_three = requests.get(url, headers=headers, params=params, verify=False)
-print(response_three.status_code)
-meta = pd.DataFrame(json.loads(response_three.text)['meta'])
-if meta.loc['total'].values[0] > filter_limit:
-    p = pd.DataFrame(json.loads(response_three.text)['data'])
-    pb = pd.DataFrame()
-    filter_start = 50
-    for s in range(filter_start,meta.loc['total'].values[0],filter_start):
-        try:
-            params.update({'filter.start': s})
-            print(params, s)
-            response_three = requests.get(url, headers=headers, params=params, verify=False)
-            print(response_three.status_code)
-            pb_ = pd.DataFrame(json.loads(response_three.text)['data'])
-            pb = pd.concat([pb, pb_], axis=0)
-        except KeyError:
-            pass
-peanut_butter = pd.concat([p, pb],axis=0)
-print(peanut_butter.shape)
-peanut_butter = peanut_butter.drop(columns=['productId', 'upc', 'images', 'itemInformation', 'temperature'])
-peanut_butter = pd.concat([peanut_butter.drop(['items'], axis=1), peanut_butter['items'].apply(lambda x: x[0]).apply(pd.Series)], axis=1)
-peanut_butter = pd.concat([peanut_butter.drop(['price'], axis=1), peanut_butter['price'].apply(pd.Series)], axis=1)
-print(peanut_butter['description'].value_counts()[:50])
+peanut_butter = product_search(filter_term='peanut butter')
 
 # Remove products that contain peanut butter (i.e. Reese's Peanut Butter Cups)
 peanut_butter = peanut_butter.loc[~(peanut_butter.description.str.contains('Candy|Bar|Cereal|Cookie|Cups|Granola|Cracker|Treats|'
@@ -634,3 +571,8 @@ peanut_butter_size_oz = pd.concat([
     ]).sort_values(by=['per_size_oz']).drop_duplicates(subset='description', keep='first')
 peanut_butter_size_oz['per_size_rank'] = peanut_butter_size_oz.groupby('per_size_oz')['per_size_oz'].transform('mean').rank(method='dense',ascending=True)
 print(peanut_butter_size_oz)
+
+# laundry detergent
+laundry_detergent = product_search(filter_term='laundry detergent')
+laundry_detergent['size'].apply(lambda x: x.split(" ", 1)[0])
+laundry_detergent['size'].apply(lambda x: x.split(" ", 1)[1]).value_counts()
