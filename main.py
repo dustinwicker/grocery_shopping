@@ -226,35 +226,33 @@ milk_coffee_creamer_size_oz_df = pd.concat([
     coffee_creamer_size_oz, non_dairy_milk_size_oz], axis=0).sort_values(by=['per_size_oz'])
 
 # vegetables
+# want to visual fruit and veggies and have available via mobile (google sheets with tabs for each completed dataframe?)
 veg = product_search(filter_term='fresh vegetables')
-print(veg['size'].value_counts())
-# clean up misc. sizes
+# clean up misc. sizes (add description or upc to make more exact? or could make too specific?)
 veg.loc[veg['size'] == 'each', 'size'] = '1 each'
 veg.loc[veg['size'] == '1 pt / 10 oz', 'size'] = '10 oz'
 veg.loc[veg['size'] == '4 ct / 3 oz', 'size'] = '12 oz'
 veg.loc[veg['size'] == '4 ct / 10.5 oz', 'size'] = '42 oz'
 veg.loc[veg['size'] == '4 ct / 15.25 oz', 'size'] = '61 oz'
 
-# create size_a column
-veg['size_a'] = veg['size'].apply(lambda x: x.split())
+# create size_ column
+veg['size_'] = veg['size'].apply(lambda x: x.split(" ", 1))
+print(veg['size'].apply(lambda x: x.split(" ", 1)[1]).value_counts())
 
 # create size_oz column (can compare oz, lb, fl oz)
 veg['size_oz'] = np.nan
-# oz, oz., fl oz, fl oz.
-# lb, lb., lbs
-veg['size_oz'] = veg['size_a'].apply(
-    lambda x: float(x[0]) if ( (x[-1] == 'oz' or x[-1] == 'oz.') and (len(x) == 2 or len(x) == 3) )
-    else ( float(x[0])*oz_in_lb if ( (x[-1] == 'lb' or x[-1] == 'lb.' or x[-1] == 'lbs') and (len(x) == 2) )
-    else np.nan ) )
-
-# create size_each column (bunch, ct, each)
-veg['size_each'] = np.nan
-veg['size_each'] = veg['size_a'].apply(
-    lambda x: float(x[0]) if (x[-1] == 'ct' or x[-1] == 'each' or x[-1] == 'bunch' ) and (len(x) == 2)
-    else np.nan )
+oz_finder = 'oz' # oz, oz., fl oz, fl oz.
+lb_finder = 'lb' # lb, lb., lbs
+each_finder = ['ct', 'bunch', 'each']
+veg['size_oz'] = veg['size_'].apply(lambda x: float(x[0]) if oz_finder in x[-1] else (float(x[0])*oz_in_lb if lb_finder in x[-1]
+                                                                                 else np.nan))
+# create size_each column (bunch, ct, each) #pk? 5/14/2023
+veg['size_each'] = veg['size_'].apply(lambda x: float(x[0]) if any([q for q in each_finder if q in x[-1]]) else np.nan )
 
 # check to see if any products remain that need sizing information
-print(veg.loc[ (veg['size_oz'].isna() & veg['size_each'].isna()), ['description', 'size_a', 'size']])
+print(veg.loc[(veg['size_oz'].isna() & veg['size_each'].isna()), ['description', 'size', 'size_']])
+# drop for now 5/14/2023
+veg = veg.loc[~(veg['size_oz'].isna() & veg['size_each'].isna())]
 
 # column creation
 veg['regular_per_size_oz'] = veg['regular']/veg['size_oz']
@@ -281,8 +279,67 @@ veg_size_each = pd.concat([
 veg_size_each['per_size_rank'] = veg_size_each.groupby('per_size_each')['per_size_each'].transform('mean').rank(method='dense',ascending=True)
 veg_size_each['runtime_mst'] = dt.datetime.now(pytz_mtn)
 
-print(veg_size_oz)
-print(veg_size_each)
+# fruit
+fruit = product_search(filter_term='fruit')
+print(fruit['size'].value_counts())
+# clean up misc. sizes
+fruit.loc[fruit['size'] == '1 pt / 10 oz', 'size'] = '10 oz'
+# create size_ column
+fruit['size_'] = fruit['size'].apply(lambda x: x.split(" ", 1))
+print(fruit['size_'].value_counts())
+
+# create size_oz column (can compare oz, lb, fl oz)
+fruit['size_oz'] = np.nan
+fruit['size_oz'] = fruit['size_'].apply(lambda x: float(x[0]) if oz_finder in x[-1] else (float(x[0])*oz_in_lb if lb_finder in x[-1]
+                                                                                 else np.nan))
+# create size_each column (bunch, ct, each) #pk? 5/14/2023
+fruit['size_each'] = fruit['size_'].apply(lambda x: float(x[0]) if any([q for q in each_finder if q in x[-1]]) else np.nan )
+
+# check to see if any products remain that need sizing information
+print(fruit.loc[ (fruit['size_oz'].isna() & fruit['size_each'].isna()), ['description', 'size_', 'size']])
+
+# column creation
+fruit['regular_per_size_oz'] = fruit['regular']/fruit['size_oz']
+fruit['promo_per_size_oz'] = fruit['promo']/fruit['size_oz']
+fruit['pct_change_regular_to_promo_size_oz']=((fruit.promo_per_size_oz - fruit.regular_per_size_oz)/fruit.regular_per_size_oz)*100
+
+fruit['regular_per_size_each'] = fruit['regular']/fruit['size_each']
+fruit['promo_per_size_each'] = fruit['promo']/fruit['size_each']
+fruit['pct_change_regular_to_promo_size_each']=((fruit.promo_per_size_each - fruit.regular_per_size_each)/fruit.regular_per_size_each)*100
+
+# size_oz price
+fruit_size_oz = pd.concat([
+    fruit[['description','size','regular', 'promo', 'regular_per_size_oz', 'pct_change_regular_to_promo_size_oz']].dropna().rename(columns={'regular_per_size_oz':'per_size_oz'}),
+    fruit.loc[fruit.promo_per_size_oz>0,['description','size','regular', 'promo', 'promo_per_size_oz', 'pct_change_regular_to_promo_size_oz']].dropna().rename(columns={'promo_per_size_oz':'per_size_oz'})
+    ]).sort_values(by=['per_size_oz']).drop_duplicates(subset='description', keep='first')
+fruit_size_oz['per_size_rank'] = fruit_size_oz.groupby('per_size_oz')['per_size_oz'].transform('mean').rank(method='dense',ascending=True)
+fruit_size_oz['runtime_mst'] = dt.datetime.now(pytz_mtn)
+
+# size_each price
+fruit_size_each = pd.concat([
+    fruit[['description','size','regular', 'promo', 'regular_per_size_each', 'pct_change_regular_to_promo_size_each']].dropna().rename(columns={'regular_per_size_each':'per_size_each'}),
+    fruit.loc[fruit.promo_per_size_each>0,['description','size','regular', 'promo', 'promo_per_size_each', 'pct_change_regular_to_promo_size_each']].dropna().rename(columns={'promo_per_size_each':'per_size_each'})
+    ]).sort_values(by=['per_size_each']).drop_duplicates(subset='description', keep='first')
+fruit_size_each['per_size_rank'] = fruit_size_each.groupby('per_size_each')['per_size_each'].transform('mean').rank(method='dense',ascending=True)
+fruit_size_each['runtime_mst'] = dt.datetime.now(pytz_mtn)
+
+# could keep upc for drop_duplicates to use as subset
+veg_fruit_size_oz = pd.concat([veg_size_oz, fruit_size_oz], axis=0).\
+    drop_duplicates(subset=['description', 'size']).reset_index(drop=True).sort_values(by=['per_size_oz'])
+veg_fruit_size_each = pd.concat([veg_size_each, fruit_size_each], axis=0).\
+    drop_duplicates(subset=['description', 'size']).reset_index(drop=True).sort_values(by=['per_size_each'])
+
+import certifi
+certifi.where()
+
+veg_fruit_size_oz.plot.bar(x='per_size_rank', y='per_size_oz')
+
+
+
+
+
+
+
 
 # decaf and herbal tea
 decaf_tea = product_search(filter_term='decaf tea')
@@ -347,61 +404,8 @@ tea_size_ct['per_size_rank'] = tea_size_ct.groupby('per_size_ct')['per_size_ct']
 print(tea_size_oz)
 print(tea_size_ct)
 
-# fruit
-fruit = product_search(filter_term='fruit')
-
-print(fruit['size'].value_counts())
-# clean up misc. sizes
-fruit.loc[fruit['size'] == '1 pt / 10 oz', 'size'] = '10 oz'
-# create size_a column
-fruit['size_a'] = fruit['size'].apply(lambda x: x.split())
-
-# create size_oz column (can compare oz, lb, fl oz)
-fruit['size_oz'] = np.nan
-# oz, oz., fl oz, fl oz.
-# lb, lbs
-fruit['size_oz'] = fruit['size_a'].apply(lambda x: float(x[0]) if ( (x[-1] == 'oz' or x[-1] == 'oz.') and (len(x) == 2 or len(x) == 3) )
-                                    else ( float(x[0])*oz_in_lb if ( (x[-1] == 'lb' or x[-1] == 'lbs') and (len(x) == 2) ) else np.nan ) )
-
-# create size_each column (bunch, ct, each)
-fruit['size_each'] = np.nan
-fruit['size_each'] = fruit['size_a'].apply(lambda x: float(x[0]) if (x[-1] == 'ct' or x[-1] == 'each') and (len(x) == 2) else np.nan )
-
-# check to see if any products remain that need sizing information
-print(fruit.loc[ (fruit['size_oz'].isna() & fruit['size_each'].isna()), ['description', 'size_a', 'size']])
-
-# column creation
-fruit['regular_per_size_oz'] = fruit['regular']/fruit['size_oz']
-fruit['promo_per_size_oz'] = fruit['promo']/fruit['size_oz']
-fruit['pct_change_regular_to_promo_size_oz']=((fruit.promo_per_size_oz - fruit.regular_per_size_oz)/fruit.regular_per_size_oz)*100
-
-fruit['regular_per_size_each'] = fruit['regular']/fruit['size_each']
-fruit['promo_per_size_each'] = fruit['promo']/fruit['size_each']
-fruit['pct_change_regular_to_promo_size_each']=((fruit.promo_per_size_each - fruit.regular_per_size_each)/fruit.regular_per_size_each)*100
-
-# size_oz price
-fruit_size_oz = pd.concat([
-    fruit[['description','size','regular', 'promo', 'regular_per_size_oz', 'pct_change_regular_to_promo_size_oz']].dropna().rename(columns={'regular_per_size_oz':'per_size_oz'}),
-    fruit.loc[fruit.promo_per_size_oz>0,['description','size','regular', 'promo', 'promo_per_size_oz', 'pct_change_regular_to_promo_size_oz']].dropna().rename(columns={'promo_per_size_oz':'per_size_oz'})
-    ]).sort_values(by=['per_size_oz']).drop_duplicates(subset='description', keep='first')
-fruit_size_oz['per_size_rank'] = fruit_size_oz.groupby('per_size_oz')['per_size_oz'].transform('mean').rank(method='dense',ascending=True)
-fruit_size_oz['runtime_mst'] = dt.datetime.now(pytz_mtn)
-
-# size_each price
-fruit_size_each = pd.concat([
-    fruit[['description','size','regular', 'promo', 'regular_per_size_each', 'pct_change_regular_to_promo_size_each']].dropna().rename(columns={'regular_per_size_each':'per_size_each'}),
-    fruit.loc[fruit.promo_per_size_each>0,['description','size','regular', 'promo', 'promo_per_size_each', 'pct_change_regular_to_promo_size_each']].dropna().rename(columns={'promo_per_size_each':'per_size_each'})
-    ]).sort_values(by=['per_size_each']).drop_duplicates(subset='description', keep='first')
-fruit_size_each['per_size_rank'] = fruit_size_each.groupby('per_size_each')['per_size_each'].transform('mean').rank(method='dense',ascending=True)
-fruit_size_each['runtime_mst'] = dt.datetime.now(pytz_mtn)
-
-# could keep upc for drop_duplicates to use as subset
-veg_fruit_size_oz_df = pd.concat([veg_size_oz.reset_index(drop=True),
-                                  fruit_size_oz.reset_index(drop=True)], axis=0).\
-    drop_duplicates(subset=['description', 'size']).reset_index(drop=True).sort_values(by=['per_size_oz'])
-
 # salad dressing
-salad_dressing = product_search(filter_term='salad dressing', filter_fulfillment='csp', filter_limit=50, filter_start=50)
+salad_dressing = product_search(filter_term='salad dressing')
 print(salad_dressing['size'].value_counts())
 # clean up misc. sizes - check these on kroger site ###
 # size gives ct (number of tea bags) and oz (weight of package) - only need ct
