@@ -111,6 +111,118 @@ def product_search(filter_term):
 # obtain access token using function
 access_token = obtain_access_token()
 edgewater_location_id = location(zipcode=80204, address='1725 Sheridan', city='Edgewater')
+# vegetables
+# want to visual fruit and veggies and have available via mobile (google sheets with tabs for each completed dataframe?)
+veg = product_search(filter_term='fresh vegetables')
+# clean up misc. sizes (add description or upc to make more exact? or could make too specific?)
+veg.loc[veg['size'] == 'each', 'size'] = '1 each'
+veg.loc[veg['size'] == '1 pt / 10 oz', 'size'] = '10 oz'
+veg.loc[veg['size'] == '4 ct / 3 oz', 'size'] = '12 oz'
+veg.loc[veg['size'] == '4 ct / 10.5 oz', 'size'] = '42 oz'
+veg.loc[veg['size'] == '4 ct / 15.25 oz', 'size'] = '61 oz'
+
+# create size_ column
+veg['size_'] = veg['size'].apply(lambda x: x.split(" ", 1))
+print(veg['size'].apply(lambda x: x.split(" ", 1)[1]).value_counts())
+
+# create size_oz column (can compare oz, lb, fl oz)
+veg['size_oz'] = np.nan
+oz_finder = 'oz' # oz, oz., fl oz, fl oz.
+lb_finder = 'lb' # lb, lb., lbs
+each_finder = ['ct', 'bunch', 'each']
+veg['size_oz'] = veg['size_'].apply(lambda x: float(x[0]) if oz_finder in x[-1] else (float(x[0])*oz_in_lb if lb_finder in x[-1]
+                                                                                 else np.nan))
+# create size_each column (bunch, ct, each) #pk? 5/14/2023
+veg['size_each'] = veg['size_'].apply(lambda x: float(x[0]) if any([q for q in each_finder if q in x[-1]]) else np.nan )
+
+# check to see if any products remain that need sizing information
+print(veg.loc[(veg['size_oz'].isna() & veg['size_each'].isna()), ['description', 'size', 'size_']])
+# drop for now 5/14/2023
+veg = veg.loc[~(veg['size_oz'].isna() & veg['size_each'].isna())]
+
+# column creation
+veg['regular_per_size_oz'] = veg['regular']/veg['size_oz']
+veg['promo_per_size_oz'] = veg['promo']/veg['size_oz']
+veg['pct_change_regular_to_promo_size_oz']=((veg.promo_per_size_oz - veg.regular_per_size_oz)/veg.regular_per_size_oz)*100
+
+veg['regular_per_size_each'] = veg['regular']/veg['size_each']
+veg['promo_per_size_each'] = veg['promo']/veg['size_each']
+veg['pct_change_regular_to_promo_size_each']=((veg.promo_per_size_each - veg.regular_per_size_each)/veg.regular_per_size_each)*100
+
+# size_oz price
+veg_size_oz = pd.concat([
+    veg[['description','size','regular', 'promo', 'regular_per_size_oz', 'pct_change_regular_to_promo_size_oz']].dropna().rename(columns={'regular_per_size_oz':'per_size_oz'}),
+    veg.loc[veg.promo_per_size_oz>0,['description','size','regular', 'promo', 'promo_per_size_oz', 'pct_change_regular_to_promo_size_oz']].dropna().rename(columns={'promo_per_size_oz':'per_size_oz'})
+    ]).sort_values(by=['per_size_oz']).drop_duplicates(subset='description', keep='first')
+veg_size_oz['per_size_rank'] = veg_size_oz.groupby('per_size_oz')['per_size_oz'].transform('mean').rank(method='dense',ascending=True)
+veg_size_oz['runtime_mst'] = dt.datetime.now(pytz_mtn)
+
+# size_each price
+veg_size_each = pd.concat([
+    veg[['description','size','regular', 'promo', 'regular_per_size_each', 'pct_change_regular_to_promo_size_each']].dropna().rename(columns={'regular_per_size_each':'per_size_each'}),
+    veg.loc[veg.promo_per_size_each>0,['description','size','regular', 'promo', 'promo_per_size_each', 'pct_change_regular_to_promo_size_each']].dropna().rename(columns={'promo_per_size_each':'per_size_each'})
+    ]).sort_values(by=['per_size_each']).drop_duplicates(subset='description', keep='first')
+veg_size_each['per_size_rank'] = veg_size_each.groupby('per_size_each')['per_size_each'].transform('mean').rank(method='dense',ascending=True)
+veg_size_each['runtime_mst'] = dt.datetime.now(pytz_mtn)
+
+# fruit
+fruit = product_search(filter_term='fruit')
+print(fruit['size'].value_counts())
+# clean up misc. sizes
+fruit.loc[fruit['size'] == '1 pt / 10 oz', 'size'] = '10 oz'
+# create size_ column
+fruit['size_'] = fruit['size'].apply(lambda x: x.split(" ", 1))
+print(fruit['size_'].value_counts())
+
+# create size_oz column (can compare oz, lb, fl oz)
+fruit['size_oz'] = np.nan
+fruit['size_oz'] = fruit['size_'].apply(lambda x: float(x[0]) if oz_finder in x[-1] else (float(x[0])*oz_in_lb if lb_finder in x[-1]
+                                                                                 else np.nan))
+# create size_each column (bunch, ct, each) #pk? 5/14/2023
+fruit['size_each'] = fruit['size_'].apply(lambda x: float(x[0]) if any([q for q in each_finder if q in x[-1]]) else np.nan )
+
+# check to see if any products remain that need sizing information
+print(fruit.loc[ (fruit['size_oz'].isna() & fruit['size_each'].isna()), ['description', 'size_', 'size']])
+
+# column creation
+fruit['regular_per_size_oz'] = fruit['regular']/fruit['size_oz']
+fruit['promo_per_size_oz'] = fruit['promo']/fruit['size_oz']
+fruit['pct_change_regular_to_promo_size_oz']=((fruit.promo_per_size_oz - fruit.regular_per_size_oz)/fruit.regular_per_size_oz)*100
+
+fruit['regular_per_size_each'] = fruit['regular']/fruit['size_each']
+fruit['promo_per_size_each'] = fruit['promo']/fruit['size_each']
+fruit['pct_change_regular_to_promo_size_each']=((fruit.promo_per_size_each - fruit.regular_per_size_each)/fruit.regular_per_size_each)*100
+
+# size_oz price
+fruit_size_oz = pd.concat([
+    fruit[['description','size','regular', 'promo', 'regular_per_size_oz', 'pct_change_regular_to_promo_size_oz']].dropna().rename(columns={'regular_per_size_oz':'per_size_oz'}),
+    fruit.loc[fruit.promo_per_size_oz>0,['description','size','regular', 'promo', 'promo_per_size_oz', 'pct_change_regular_to_promo_size_oz']].dropna().rename(columns={'promo_per_size_oz':'per_size_oz'})
+    ]).sort_values(by=['per_size_oz']).drop_duplicates(subset='description', keep='first')
+fruit_size_oz['per_size_rank'] = fruit_size_oz.groupby('per_size_oz')['per_size_oz'].transform('mean').rank(method='dense',ascending=True)
+fruit_size_oz['runtime_mst'] = dt.datetime.now(pytz_mtn)
+
+# size_each price
+fruit_size_each = pd.concat([
+    fruit[['description','size','regular', 'promo', 'regular_per_size_each', 'pct_change_regular_to_promo_size_each']].dropna().rename(columns={'regular_per_size_each':'per_size_each'}),
+    fruit.loc[fruit.promo_per_size_each>0,['description','size','regular', 'promo', 'promo_per_size_each', 'pct_change_regular_to_promo_size_each']].dropna().rename(columns={'promo_per_size_each':'per_size_each'})
+    ]).sort_values(by=['per_size_each']).drop_duplicates(subset='description', keep='first')
+fruit_size_each['per_size_rank'] = fruit_size_each.groupby('per_size_each')['per_size_each'].transform('mean').rank(method='dense',ascending=True)
+fruit_size_each['runtime_mst'] = dt.datetime.now(pytz_mtn)
+
+# could keep upc for drop_duplicates to use as subset
+veg_fruit_size_oz = pd.concat([veg_size_oz, fruit_size_oz], axis=0).\
+    drop_duplicates(subset=['description', 'size']).reset_index(drop=True).sort_values(by=['per_size_oz'])
+veg_fruit_size_each = pd.concat([veg_size_each, fruit_size_each], axis=0).\
+    drop_duplicates(subset=['description', 'size']).reset_index(drop=True).sort_values(by=['per_size_each'])
+
+# import certifi
+# certifi.where()
+veg_fruit_size_oz.per_size_oz.describe()
+
+import seaborn as sns
+sns.barplot(data=veg_fruit_size_oz, x='description', y='per_size_oz')
+sns.histplot(data=veg_fruit_size_oz, x='per_size_oz', kde=True)
+
 # coffee
 coffee = product_search(filter_term='whole bean coffee')
 coffee['size_oz'] = np.nan
@@ -224,122 +336,6 @@ non_dairy_milk_size_oz['runtime_mst'] = dt.datetime.now(pytz_mtn)
 # Create dataframe
 milk_coffee_creamer_size_oz_df = pd.concat([
     coffee_creamer_size_oz, non_dairy_milk_size_oz], axis=0).sort_values(by=['per_size_oz'])
-
-# vegetables
-# want to visual fruit and veggies and have available via mobile (google sheets with tabs for each completed dataframe?)
-veg = product_search(filter_term='fresh vegetables')
-# clean up misc. sizes (add description or upc to make more exact? or could make too specific?)
-veg.loc[veg['size'] == 'each', 'size'] = '1 each'
-veg.loc[veg['size'] == '1 pt / 10 oz', 'size'] = '10 oz'
-veg.loc[veg['size'] == '4 ct / 3 oz', 'size'] = '12 oz'
-veg.loc[veg['size'] == '4 ct / 10.5 oz', 'size'] = '42 oz'
-veg.loc[veg['size'] == '4 ct / 15.25 oz', 'size'] = '61 oz'
-
-# create size_ column
-veg['size_'] = veg['size'].apply(lambda x: x.split(" ", 1))
-print(veg['size'].apply(lambda x: x.split(" ", 1)[1]).value_counts())
-
-# create size_oz column (can compare oz, lb, fl oz)
-veg['size_oz'] = np.nan
-oz_finder = 'oz' # oz, oz., fl oz, fl oz.
-lb_finder = 'lb' # lb, lb., lbs
-each_finder = ['ct', 'bunch', 'each']
-veg['size_oz'] = veg['size_'].apply(lambda x: float(x[0]) if oz_finder in x[-1] else (float(x[0])*oz_in_lb if lb_finder in x[-1]
-                                                                                 else np.nan))
-# create size_each column (bunch, ct, each) #pk? 5/14/2023
-veg['size_each'] = veg['size_'].apply(lambda x: float(x[0]) if any([q for q in each_finder if q in x[-1]]) else np.nan )
-
-# check to see if any products remain that need sizing information
-print(veg.loc[(veg['size_oz'].isna() & veg['size_each'].isna()), ['description', 'size', 'size_']])
-# drop for now 5/14/2023
-veg = veg.loc[~(veg['size_oz'].isna() & veg['size_each'].isna())]
-
-# column creation
-veg['regular_per_size_oz'] = veg['regular']/veg['size_oz']
-veg['promo_per_size_oz'] = veg['promo']/veg['size_oz']
-veg['pct_change_regular_to_promo_size_oz']=((veg.promo_per_size_oz - veg.regular_per_size_oz)/veg.regular_per_size_oz)*100
-
-veg['regular_per_size_each'] = veg['regular']/veg['size_each']
-veg['promo_per_size_each'] = veg['promo']/veg['size_each']
-veg['pct_change_regular_to_promo_size_each']=((veg.promo_per_size_each - veg.regular_per_size_each)/veg.regular_per_size_each)*100
-
-# size_oz price
-veg_size_oz = pd.concat([
-    veg[['description','size','regular', 'promo', 'regular_per_size_oz', 'pct_change_regular_to_promo_size_oz']].dropna().rename(columns={'regular_per_size_oz':'per_size_oz'}),
-    veg.loc[veg.promo_per_size_oz>0,['description','size','regular', 'promo', 'promo_per_size_oz', 'pct_change_regular_to_promo_size_oz']].dropna().rename(columns={'promo_per_size_oz':'per_size_oz'})
-    ]).sort_values(by=['per_size_oz']).drop_duplicates(subset='description', keep='first')
-veg_size_oz['per_size_rank'] = veg_size_oz.groupby('per_size_oz')['per_size_oz'].transform('mean').rank(method='dense',ascending=True)
-veg_size_oz['runtime_mst'] = dt.datetime.now(pytz_mtn)
-
-# size_each price
-veg_size_each = pd.concat([
-    veg[['description','size','regular', 'promo', 'regular_per_size_each', 'pct_change_regular_to_promo_size_each']].dropna().rename(columns={'regular_per_size_each':'per_size_each'}),
-    veg.loc[veg.promo_per_size_each>0,['description','size','regular', 'promo', 'promo_per_size_each', 'pct_change_regular_to_promo_size_each']].dropna().rename(columns={'promo_per_size_each':'per_size_each'})
-    ]).sort_values(by=['per_size_each']).drop_duplicates(subset='description', keep='first')
-veg_size_each['per_size_rank'] = veg_size_each.groupby('per_size_each')['per_size_each'].transform('mean').rank(method='dense',ascending=True)
-veg_size_each['runtime_mst'] = dt.datetime.now(pytz_mtn)
-
-# fruit
-fruit = product_search(filter_term='fruit')
-print(fruit['size'].value_counts())
-# clean up misc. sizes
-fruit.loc[fruit['size'] == '1 pt / 10 oz', 'size'] = '10 oz'
-# create size_ column
-fruit['size_'] = fruit['size'].apply(lambda x: x.split(" ", 1))
-print(fruit['size_'].value_counts())
-
-# create size_oz column (can compare oz, lb, fl oz)
-fruit['size_oz'] = np.nan
-fruit['size_oz'] = fruit['size_'].apply(lambda x: float(x[0]) if oz_finder in x[-1] else (float(x[0])*oz_in_lb if lb_finder in x[-1]
-                                                                                 else np.nan))
-# create size_each column (bunch, ct, each) #pk? 5/14/2023
-fruit['size_each'] = fruit['size_'].apply(lambda x: float(x[0]) if any([q for q in each_finder if q in x[-1]]) else np.nan )
-
-# check to see if any products remain that need sizing information
-print(fruit.loc[ (fruit['size_oz'].isna() & fruit['size_each'].isna()), ['description', 'size_', 'size']])
-
-# column creation
-fruit['regular_per_size_oz'] = fruit['regular']/fruit['size_oz']
-fruit['promo_per_size_oz'] = fruit['promo']/fruit['size_oz']
-fruit['pct_change_regular_to_promo_size_oz']=((fruit.promo_per_size_oz - fruit.regular_per_size_oz)/fruit.regular_per_size_oz)*100
-
-fruit['regular_per_size_each'] = fruit['regular']/fruit['size_each']
-fruit['promo_per_size_each'] = fruit['promo']/fruit['size_each']
-fruit['pct_change_regular_to_promo_size_each']=((fruit.promo_per_size_each - fruit.regular_per_size_each)/fruit.regular_per_size_each)*100
-
-# size_oz price
-fruit_size_oz = pd.concat([
-    fruit[['description','size','regular', 'promo', 'regular_per_size_oz', 'pct_change_regular_to_promo_size_oz']].dropna().rename(columns={'regular_per_size_oz':'per_size_oz'}),
-    fruit.loc[fruit.promo_per_size_oz>0,['description','size','regular', 'promo', 'promo_per_size_oz', 'pct_change_regular_to_promo_size_oz']].dropna().rename(columns={'promo_per_size_oz':'per_size_oz'})
-    ]).sort_values(by=['per_size_oz']).drop_duplicates(subset='description', keep='first')
-fruit_size_oz['per_size_rank'] = fruit_size_oz.groupby('per_size_oz')['per_size_oz'].transform('mean').rank(method='dense',ascending=True)
-fruit_size_oz['runtime_mst'] = dt.datetime.now(pytz_mtn)
-
-# size_each price
-fruit_size_each = pd.concat([
-    fruit[['description','size','regular', 'promo', 'regular_per_size_each', 'pct_change_regular_to_promo_size_each']].dropna().rename(columns={'regular_per_size_each':'per_size_each'}),
-    fruit.loc[fruit.promo_per_size_each>0,['description','size','regular', 'promo', 'promo_per_size_each', 'pct_change_regular_to_promo_size_each']].dropna().rename(columns={'promo_per_size_each':'per_size_each'})
-    ]).sort_values(by=['per_size_each']).drop_duplicates(subset='description', keep='first')
-fruit_size_each['per_size_rank'] = fruit_size_each.groupby('per_size_each')['per_size_each'].transform('mean').rank(method='dense',ascending=True)
-fruit_size_each['runtime_mst'] = dt.datetime.now(pytz_mtn)
-
-# could keep upc for drop_duplicates to use as subset
-veg_fruit_size_oz = pd.concat([veg_size_oz, fruit_size_oz], axis=0).\
-    drop_duplicates(subset=['description', 'size']).reset_index(drop=True).sort_values(by=['per_size_oz'])
-veg_fruit_size_each = pd.concat([veg_size_each, fruit_size_each], axis=0).\
-    drop_duplicates(subset=['description', 'size']).reset_index(drop=True).sort_values(by=['per_size_each'])
-
-import certifi
-certifi.where()
-
-veg_fruit_size_oz.plot.bar(x='per_size_rank', y='per_size_oz')
-
-
-
-
-
-
-
 
 # decaf and herbal tea
 decaf_tea = product_search(filter_term='decaf tea')
