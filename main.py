@@ -7,6 +7,8 @@ import numpy as np
 import datetime as dt
 import pytz
 
+# on github
+
 # Increase maximum width in characters of columns - will put all columns in same line in console readout
 pd.set_option('expand_frame_repr', False)
 # Increase number of rows printed out in console
