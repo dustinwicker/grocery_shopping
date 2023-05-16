@@ -27,8 +27,16 @@ encoded_client_token = base64.b64encode(f"{client_id}:{client_secret}".encode('a
 # Measurement conversions
 oz_in_lb, oz_in_qt, oz_in_l, oz_in_gal = 16, 32, 33.81, 128
 # oz, lb, other variation finder for size column
-oz_finder = 'oz'  # oz, oz., fl oz, fl oz.
-lb_finder = 'lb'  # lb, lb., lbs
+# 'oz'  # oz, oz., fl oz, fl oz.
+# 'lb'  # lb, lb., lbs
+# 'qt'  # qt, qt.
+# 'l'  # l, l.
+# 'gal'  # gal, gal.
+finder_converter_dict = {'oz': 1,
+                         'lb': oz_in_lb,
+                         'qt': oz_in_qt,
+                         'l': oz_in_l,
+                         'gal': oz_in_gal}
 each_finder = ['ct', 'bunch', 'each']
 # Mountain timezone
 pytz_mtn = pytz.timezone('US/Mountain')
@@ -74,19 +82,31 @@ def location(zipcode, address, city):
     location_id = location_df.loc[(location_df.addressLine1.str.contains(address)) & (location_df.city == city), 'locationId'].values[0]
     return location_id
 
-
+# obtain access token using function
+access_token = obtain_access_token()
 def product_search(filter_term):
     """search term and return info in form of DataFrame"""
     # products url and necessary headers info to search products
     url = api_url + '/products'
+    # filter parameters (csp indicates pick up availability)
+    params = {'filter.locationId': edgewater_location_id, 'filter.fulfillment': f'{filter_fulfillment}',
+              'filter.term': f'{filter_term}', 'filter.limit': filter_limit}
     headers = {
         'Accept': 'application/json',
         'Authorization': f'Bearer {access_token}' }
-    # filter parameters (csp indicates pick up availability)
-    params = {'filter.locationId': edgewater_location_id, 'filter.fulfillment': f'{filter_fulfillment}',
-          'filter.term': f'{filter_term}', 'filter.limit': filter_limit}
     response = requests.get(url, headers=headers, params=params, verify=False)
-    print(response.status_code)
+    response_continue = False
+    while (response_continue == False):
+        if response.status_code == 200:
+            response_continue = True
+        else:
+            access_token_ = obtain_access_token()
+            headers = {
+                'Accept': 'application/json',
+                'Authorization': f'Bearer {access_token_}'}
+            response = requests.get(url, headers=headers, params=params, verify=False)
+            if response.status_code == 200:
+                response_continue = True
     meta = pd.DataFrame(json.loads(response.text)['meta'])
     if meta.loc['total'].values[0] > filter_limit:
         a = pd.DataFrame(json.loads(response.text)['data'])
@@ -121,8 +141,7 @@ def column_creation(df):
     df['pct_change_regular_to_promo_size_each']=((df.promo_per_size_each - df.regular_per_size_each)/df.regular_per_size_each)*100
 
 
-# obtain access token using function
-access_token = obtain_access_token()
+
 edgewater_location_id = location(zipcode=80204, address='1725 Sheridan', city='Edgewater')
 # vegetables
 # want to visual fruit and veggies and have available via mobile (google sheets with tabs for each completed dataframe?)
@@ -240,7 +259,7 @@ print(coffee.loc[coffee['size'] =='each', 'size'])
 print(coffee['size'].value_counts())
 # create size_ column
 coffee['size_'] = coffee['size'].apply(lambda x: x.split(" ", 1))
-print(coffee['size_'].apply(lambda x: x[1]).value_counts())```
+print(coffee['size_'].apply(lambda x: x[1]).value_counts())
 # create size_oz column (can compare oz, lb, fl oz)
 coffee['size_oz'] = coffee['size_'].apply(lambda x: float(x[0]) if oz_finder in x[-1] else (float(x[0])*oz_in_lb if lb_finder in x[-1]
                                                                                  else np.nan))
@@ -286,35 +305,62 @@ decaf_coffee_size_oz = pd.concat([
 decaf_coffee_size_oz['runtime_mst'] = dt.datetime.now(pytz_mtn)
 print(decaf_coffee_size_oz)
 
-coffee_size_oz_df = pd.concat([coffee_size_oz, decaf_coffee_size_oz], axis=0).\
+coffee_size_oz = pd.concat([coffee_size_oz, decaf_coffee_size_oz], axis=0).\
     drop_duplicates(subset=['description', 'size']).reset_index(drop=True).sort_values(by=['per_size_oz'])
+coffee_size_oz['per_size_rank'] = coffee_size_oz.groupby('per_size_oz')['per_size_oz'].transform('mean').\
+    rank(method= 'dense', ascending=True)
+print(coffee_size_oz.per_size_rank.value_counts().sort_index())
+
+# laundry detergent
+laundry_detergent = product_search(filter_term='laundry detergent')
+print(laundry_detergent.loc[laundry_detergent['size'].str.contains('/'), 'size'])
+print(laundry_detergent.loc[laundry_detergent['size'] =='each', 'size'])
+print(laundry_detergent['size'].value_counts())
+
+# create size_ column
+laundry_detergent['size_'] = laundry_detergent['size'].apply(lambda x: x.split(" ", 1))
+print(laundry_detergent['size_'].apply(lambda x: x[1]).value_counts())
+# create size_oz column (can compare oz, lb, fl oz)
+laundry_detergent['size_oz'] = laundry_detergent['size_'].apply(lambda x: float(x[0]) if oz_finder in x[-1] else (float(x[0])*oz_in_lb if lb_finder in x[-1]
+                                                                                 else np.nan))
+
+
+
+
 
 # coffee creamer
 coffee_creamer = product_search(filter_term='non dairy coffee creamer')
 # clean up misc. sizes
-coffee_creamer.loc[coffee_creamer['size'] == '1/2 gal', 'size'] = '0.5 gal'
+print(coffee_creamer.loc[coffee_creamer['size'].str.contains('/'), 'size'])
+print(coffee_creamer.loc[coffee_creamer['size'] =='each', 'size'])
+print(coffee_creamer['size'].value_counts())
 
-# create size_a column
-coffee_creamer['size_a'] = coffee_creamer['size'].apply(lambda x: x.split())
-# create size_oz column (can compare oz, lb, fl oz, qt, l)
-coffee_creamer['size_oz'] = np.nan
-# oz, oz., fl oz, fl oz., lb, lb.
-coffee_creamer['size_oz'] = coffee_creamer['size_a'].apply(
-    lambda x: float(x[0]) if ( (x[-1] == 'oz' or x[-1] == 'oz.') and (len(x) == 2 or len(x) == 3) )
-    else ( float(x[0])*oz_in_qt if ( (x[-1] == 'qt' or x[-1] == 'qt.') and (len(x) == 2) )
-    else ( float(x[0])*oz_in_l if ( (x[-1] == 'l' or x[-1] == 'l.') and (len(x) == 2) )
-    else ( float(x[0])*oz_in_gal if ( (x[-1] == 'gal' or x[-1] == 'gal.') and (len(x) == 2) )
-    else np.nan ) ) ) )
-
-coffee_creamer['regular_per_size_oz'] = coffee_creamer['regular']/coffee_creamer['size_oz']
-coffee_creamer['promo_per_size_oz'] = coffee_creamer['promo']/coffee_creamer['size_oz']
-coffee_creamer['pct_change_regular_to_promo_size_oz']=((coffee_creamer.promo_per_size_oz - coffee_creamer.regular_per_size_oz)/coffee_creamer.regular_per_size_oz)*100
-
+# coffee_creamer.loc[coffee_creamer['size'] == '1/2 gal', 'size'] = '0.5 gal'
+def final_dataframe(df):
+    """Creates final frame for analysis and shopping"""
+    # create size_ column
+    coffee_creamer['size_'] = coffee_creamer['size'].apply(lambda x: x.split(" ", 1))
+    print(coffee_creamer['size_'].apply(lambda x: x[1]).value_counts())
+    unique_sizes = coffee_creamer['size_'].apply(lambda x: x[1]).unique()
+    # create size_oz column
+    if len([i for i in finder_converter_dict.keys() if i in unique_sizes])>0:
+        coffee_creamer['size_oz'] = coffee_creamer['size_'].apply(lambda x: float(x[0]) if 'oz' in x[-1]
+        else (float(x[0])*finder_converter_dict['lb'] if 'lb' in x[-1]
+              else (float(x[0])*finder_converter_dict['qt'] if 'qt' in x[-1]
+                    else (float(x[0])**finder_converter_dict['l'] if 'l' in x[-1]
+                          else (float(x[0])*finder_converter_dict['gal'] if 'gal' in x[-1]
+                                else np.nan)))))
+        coffee_creamer['regular_per_size_oz'] = coffee_creamer['regular']/coffee_creamer['size_oz']
+        coffee_creamer['promo_per_size_oz'] = coffee_creamer['promo']/coffee_creamer['size_oz']
+        coffee_creamer['pct_change_regular_to_promo_size_oz']=((coffee_creamer.promo_per_size_oz - coffee_creamer.regular_per_size_oz)/coffee_creamer.regular_per_size_oz)*100
+    # each column ######
 # check to see if any products remain that need sizing information
-print(coffee_creamer.loc[ coffee_creamer['size_oz'].isna(), ['description', 'size']])
+print(coffee_creamer.loc[ coffee_creamer['size_'].isna(), ['description', 'size']])
 
 coffee_creamer_size_oz = pd.concat([
-    coffee_creamer[['description','size','regular', 'promo', 'regular_per_size_oz', 'pct_change_regular_to_promo_size_oz']].dropna().rename(columns={'regular_per_size_oz':'per_size_oz'}),
+    coffee_creamer[['description','size','regular', 'promo', 'regular_per_size_oz',
+                    'pct_change_regular_to_promo_size_oz']].dropna().
+    rename(columns={'regular_per_size_oz':'per_size_oz'}),
     coffee_creamer.loc[coffee_creamer.promo_per_size_oz>0,['description','size','regular', 'promo', 'promo_per_size_oz', 'pct_change_regular_to_promo_size_oz']].dropna().rename(columns={'promo_per_size_oz':'per_size_oz'})
     ]).sort_values(by=['per_size_oz']).drop_duplicates(subset='description', keep='first')
 coffee_creamer_size_oz['per_size_rank'] = coffee_creamer_size_oz.groupby('per_size_oz')['per_size_oz'].transform('mean').rank(method='dense',ascending=True)
@@ -590,8 +636,3 @@ peanut_butter_size_oz = pd.concat([
     ]).sort_values(by=['per_size_oz']).drop_duplicates(subset='description', keep='first')
 peanut_butter_size_oz['per_size_rank'] = peanut_butter_size_oz.groupby('per_size_oz')['per_size_oz'].transform('mean').rank(method='dense',ascending=True)
 print(peanut_butter_size_oz)
-
-# laundry detergent
-laundry_detergent = product_search(filter_term='laundry detergent')
-laundry_detergent['size'].apply(lambda x: x.split(" ", 1)[0])
-laundry_detergent['size'].apply(lambda x: x.split(" ", 1)[1]).value_counts()
