@@ -6,7 +6,9 @@ import pandas as pd
 import numpy as np
 import datetime as dt
 import pytz
-# import seaborn as sns
+import matplotlib
+import matplotlib.pyplot as plt
+import seaborn as sns
 
 # Increase maximum width in characters of columns - will put all columns in same line in console readout
 pd.set_option('expand_frame_repr', False)
@@ -37,7 +39,7 @@ finder_converter_dict = {'oz': 1,
                          'qt': oz_in_qt,
                          'l': oz_in_l,
                          'gal': oz_in_gal}
-each_finder = ['ct', 'bunch', 'each']
+each_finder = ['bunch', 'ct', 'each', 'pk', 'roll']
 # Mountain timezone
 pytz_mtn = pytz.timezone('US/Mountain')
 api_url = 'https://api.kroger.com/v1'
@@ -60,7 +62,8 @@ def obtain_access_token():
     print(response.status_code)
     access_token = json.loads(response.text).get('access_token')
     return access_token
-
+# obtain access token using function
+access_token = obtain_access_token()
 
 def location(zipcode, address, city):
     """location information to search store for products"""
@@ -82,14 +85,13 @@ def location(zipcode, address, city):
     location_id = location_df.loc[(location_df.addressLine1.str.contains(address)) & (location_df.city == city), 'locationId'].values[0]
     return location_id
 
-# obtain access token using function
-access_token = obtain_access_token()
-def product_search(filter_term):
+
+def product_search(filter_term, location_id):
     """search term and return info in form of DataFrame"""
     # products url and necessary headers info to search products
     url = api_url + '/products'
     # filter parameters (csp indicates pick up availability)
-    params = {'filter.locationId': edgewater_location_id, 'filter.fulfillment': f'{filter_fulfillment}',
+    params = {'filter.locationId': location_id, 'filter.fulfillment': f'{filter_fulfillment}',
               'filter.term': f'{filter_term}', 'filter.limit': filter_limit}
     headers = {
         'Accept': 'application/json',
@@ -133,19 +135,67 @@ def product_search(filter_term):
 
 
 def column_creation(df):
-    df['regular_per_size_oz'] = df['regular']/df['size_oz']
-    df['promo_per_size_oz'] = df['promo']/df['size_oz']
-    df['pct_change_regular_to_promo_size_oz']=((df.promo_per_size_oz - df.regular_per_size_oz)/df.regular_per_size_oz)*100
-    df['regular_per_size_each'] = df['regular']/df['size_each']
-    df['promo_per_size_each'] = df['promo']/df['size_each']
-    df['pct_change_regular_to_promo_size_each']=((df.promo_per_size_each - df.regular_per_size_each)/df.regular_per_size_each)*100
+    if 'size_oz' in df:
+        df['regular_per_size_oz'] = df['regular']/df['size_oz']
+        df['promo_per_size_oz'] = df['promo']/df['size_oz']
+        df['pct_change_regular_to_promo_size_oz']=((df.promo_per_size_oz -
+                                                    df.regular_per_size_oz)/df.regular_per_size_oz)*100
+    if 'size_each' in df:
+        df['regular_per_size_each'] = df['regular']/df['size_each']
+        df['promo_per_size_each'] = df['promo']/df['size_each']
+        df['pct_change_regular_to_promo_size_each']=((df.promo_per_size_each - df.regular_per_size_each)/df.regular_per_size_each)*100
 
 
+# , address, city
+def location_by_zipcode(zipcode):
+    """location information to search store for products"""
+    url = api_url + '/locations'
+    headers = {
+        'Accept': 'application/json',
+        'Authorization': f'Bearer {access_token}'
+    }
+    params = {
+        'filter.zipCode.near': f'{zipcode}'
+    }
+    response = requests.get(url, headers=headers, params=params, verify=False)
+    print(response.status_code)
+
+    # Create DataFrame
+    location_df = pd.DataFrame(json.loads(response.text)['data'])[['locationId', 'chain', 'address']]
+
+    # Drop address column, split address column (dict) into separate columns
+    location_df = pd.concat([location_df.drop(['address'], axis=1), location_df['address'].apply(pd.Series)], axis=1)
+    # location_id = location_df.loc[(location_df.addressLine1.str.contains(address)) & (location_df.city == city), 'locationId'].values[0]
+    return location_df
+
+location_df = location_by_zipcode(zipcode=80218)
 
 edgewater_location_id = location(zipcode=80204, address='1725 Sheridan', city='Edgewater')
+denver_location_id = location(zipcode=80218, address='1155 E 9Th Ave', city='Denver')
+# toilet paper
+tp = product_search(filter_term='toilet paper', location_id=denver_location_id)
+# clean up misc. sizes
+print(tp.loc[tp['size'].str.contains('/'), 'size'])
+print(tp.loc[tp['size'] == 'each', 'size'])
+print(tp['size'].value_counts())
+# create size_ column
+tp['size_'] = tp['size'].apply(lambda x: x.split(" ", 1))
+print(tp['size'].apply(lambda x: x.split(" ", 1)[1]).value_counts())
+# create size_each column (bunch, ct, each) #pk? 5/14/2023
+tp['size_each'] = tp['size_'].apply(lambda x: float(x[0]) if any([q for q in each_finder if q in x[-1]]) else np.nan)
+column_creation(df=tp)
+# size_each price
+tp_size_each = pd.concat([
+    tp[['description','size','regular', 'promo', 'regular_per_size_each', 'pct_change_regular_to_promo_size_each']].dropna().rename(columns={'regular_per_size_each':'per_size_each'}),
+    tp.loc[tp.promo_per_size_each>0,['description','size','regular', 'promo', 'promo_per_size_each', 'pct_change_regular_to_promo_size_each']].dropna().rename(columns={'promo_per_size_each':'per_size_each'})
+    ]).sort_values(by=['per_size_each']).drop_duplicates(subset='description', keep='first')
+# tp_size_each['per_size_rank'] = tp_size_each.groupby('per_size_each')['per_size_each'].transform('mean').rank(method='dense',ascending=True)
+tp_size_each['runtime_mst'] = dt.datetime.now(pytz_mtn)
+sns.histplot(data=tp_size_each, x='per_size_each')
+
 # vegetables
 # want to visual fruit and veggies and have available via mobile (google sheets with tabs for each completed dataframe?)
-veg = product_search(filter_term='fresh vegetables')
+veg = product_search(filter_term='fresh vegetables', location_id=denver_location_id)
 # clean up misc. sizes (add description or upc to make more exact? or could make too specific?) - those with "/", 'each'
 print(veg.loc[veg['size'].str.contains('/'), 'size'])
 print(veg.loc[veg['size'] =='each', 'size'])
@@ -158,7 +208,8 @@ print(veg['size'].value_counts())
 # create size_ column
 veg['size_'] = veg['size'].apply(lambda x: x.split(" ", 1))
 print(veg['size'].apply(lambda x: x.split(" ", 1)[1]).value_counts())
-
+oz_finder = 'oz' # oz, oz., fl oz, fl oz.
+lb_finder = 'lb' # lb, lb., lbs
 # create size_oz column (can compare oz, lb, fl oz)
 veg['size_oz'] = veg['size_'].apply(lambda x: float(x[0]) if oz_finder in x[-1] else (float(x[0])*oz_in_lb if lb_finder in x[-1]
                                                                                  else np.nan))
@@ -190,7 +241,7 @@ veg_size_each = pd.concat([
 veg_size_each['runtime_mst'] = dt.datetime.now(pytz_mtn)
 
 # fruit
-fruit = product_search(filter_term='fruit')
+fruit = product_search(filter_term='fruit', location_id=denver_location_id)
 # clean up misc. sizes
 print(fruit.loc[fruit['size'].str.contains('/'), 'size'])
 print(fruit.loc[fruit['size'] == 'each', 'size'])
@@ -240,8 +291,20 @@ veg_fruit_size_oz['per_size_rank'] = veg_fruit_size_oz.groupby('per_size_oz')['p
     rank(method= 'dense', ascending=True)
 veg_fruit_size_each['per_size_rank'] = veg_fruit_size_each.groupby('per_size_each')['per_size_each'].transform('mean').\
     rank(method='dense',ascending=True)
+print(veg_fruit_size_oz, veg_fruit_size_each)
+
+# meat
+meat = product_search(filter_term='meat', location_id=denver_location_id)
+# clean up misc. sizes
+print(meat.loc[meat['size'].str.contains('/'), 'size'])
+print(meat.loc[meat['size'] =='each', 'size'])
+print(meat['size'].value_counts())
 
 
+print(meat.loc[meat['size'].str.contains('/'), 'size'].value_counts())
+meat[meat['size'].str.contains('/')].sort_values(by='description')
+# Change based on company in description
+meat[(meat['size'].str.contains('/')) & (meat.description.str.contains('Beyond Meat'))]
 
 # import certifi
 # certifi.where()
@@ -594,7 +657,7 @@ eggs_size_each['per_size_rank'] = eggs_size_each.groupby('per_size_each')['per_s
 print(eggs_size_each)
 
 # peanut butter
-peanut_butter = product_search(filter_term='peanut butter')
+peanut_butter = product_search(filter_term='peanut butter', location_id=denver_location_id)
 
 # Remove products that contain peanut butter (i.e. Reese's Peanut Butter Cups)
 peanut_butter = peanut_butter.loc[~(peanut_butter.description.str.contains('Candy|Bar|Cereal|Cookie|Cups|Granola|Cracker|Treats|'
