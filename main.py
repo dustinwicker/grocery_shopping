@@ -296,15 +296,69 @@ print(veg_fruit_size_oz, veg_fruit_size_each)
 # meat
 meat = product_search(filter_term='meat', location_id=denver_location_id)
 # clean up misc. sizes
-print(meat.loc[meat['size'].str.contains('/'), 'size'])
-print(meat.loc[meat['size'] =='each', 'size'])
-print(meat['size'].value_counts())
+# '/'
+print(meat.loc[meat['size'].str.contains('/'),  ['description', 'size']].sort_values(by='description', ascending=False))
+meat.loc[(meat['description'] == 'Simple Truth Grass Fed 85/15 Lean Ground Beef BIG Deal!') &
+         (meat['size'] == '3 ct / 1 lb'), 'size'] = f"{3*1} lb"
+meat.loc[(meat['description'] == "Schweid & Sons® Butcher's Blend Burger Patties") &
+         (meat['size'] == '4 ct / 5.3 oz'), 'size'] = f"{4*5.3} oz"
+meat.loc[(meat['description'] == "Schweid & Sons Signature Series Chuck Brisket Burger Patties") &
+         (meat['size'] == '4 ct / 5.3 oz'), 'size'] = f"{4*5.3} oz"
+meat.loc[(meat['description'] == "Private Selection® 80/20 Angus Beef Ground Chuck Patties") &
+         (meat['size'] == '2 ct / 14 oz'), 'size'] = "14 oz"
+meat.loc[(meat['description'] == "MorningStar Farms® Veggie Breakfast Original Vegan Sausage Patties") &
+         (meat['size'] == '12 ct / 1.3 oz'), 'size'] = f"{12*1.3} oz"
+meat.loc[(meat['description'] == "MorningStar Farms® Veggie Breakfast Maple Flavored Vegan Sausage Patties") &
+         (meat['size'] == '6 ct / 1.3 oz'), 'size'] = f"{6*1.3} oz"
+meat.loc[(meat['description'] == "MorningStar Farms® Veggie Breakfast Hot and Spicy Vegan Sausage Patties") &
+         (meat['size'] == '6 ct / 1.3 oz'), 'size'] = f"{6*1.3} oz"
+meat.loc[(meat['description'] == "MorningStar Farms® Spicy Black Bean Veggie Burgers") &
+         (meat['size'] == '8 ct / 2.4 oz'), 'size'] = f"{8*2.4} oz"
+meat.loc[(meat['description'] == "MorningStar Farms® Original Vegan Chicken Patties") &
+         (meat['size'] == '8 ct / 2.5 oz'), 'size'] = f"{8*2.5} oz"
+meat.loc[(meat['description'] == "MorningStar Farms® Grillers Veggie Burgers") &
+         (meat['size'] == '4 ct / 2.3 oz'), 'size'] = f"{4*2.3} oz"
+meat.loc[(meat['description'] == "MorningStar Farms® Grillers Prime Veggie Burgers") &
+         (meat['size'] == '4 ct / 2.5 oz'), 'size'] = f"{4*2.5} oz"
+meat.loc[(meat['description'] == "MorningStar Farms® Garden Veggie Veggie Burgers") &
+         (meat['size'] == '4 ct / 2.4 oz'), 'size'] = f"{4*2.4} oz"
+meat.loc[(meat['description'] == "MorningStar Farms® Buffalo Vegan Chicken Patties") &
+         (meat['size'] == '4 ct / 2.5 oz'), 'size'] = f"{4*2.5} oz"
+meat.loc[(meat['description'] == "Kroger® Lean Ground Beef Chuck 80/20 Homestyle Hamburger Patties") &
+         (meat['size'] == '10 ct / 35.2 oz'), 'size'] = "35.2 oz"
+meat.loc[(meat['description'] == "Kroger® Homestyle 93/7 Lean Ground Beef Patties") &
+         (meat['size'] == '4 ct / 4.8 oz'), 'size'] = "16 oz"
+meat.loc[(meat['description'] == "Kroger® Homestyle 80/20 Ground Beef Patties") &
+         (meat['size'] == '4 ct / 19.2 oz'), 'size'] = "19.2 oz"
+meat.loc[(meat['description'] == "Johnsonville® Original Recipe Breakfast Pork Sausage Links") &
+         (meat['size'] == '12 ct / 12 oz'), 'size'] = "12 oz"
+meat.loc[(meat['description'] == "Hormel® Natural Choice® Sliced Oven Roasted Deli Turkey Lunch Meat") &
+         (meat['size'] == '2 ct / 7 oz'), 'size'] = f"{2*7} oz"
+meat.loc[(meat['description'] == "Hormel® Natural Choice® Sliced Honey Deli Ham Lunch Meat Double Pack") &
+         (meat['size'] == '2 ct / 7 oz'), 'size'] = f"{2*7} oz"
+
+
+
+print(meat.loc[meat['size'] == 'each', 'size'])
+print(meat.loc[meat['size'].str.contains('/'), 'brand'].value_counts())
+
+# Change based on company in description
+# Morningstar Farms
+morningstar_slash = meat.loc[(meat['size'].str.contains('/') & (meat.brand == 'Morningstar Farms')) &
+         (meat['size'].str.contains('ct')) & (meat['size'].str.contains('oz')), 'size'].str.replace('ct', '').\
+         str.replace('oz', '').str.replace(' ', '').str.split('/')
+morningstar_slash.apply(lambda x: float(x[0]) * float(x[1]))
+
+# Beyond Meat
+
+
+# str.replace('ct', '').\
+#  str.replace('oz', '')
 
 
 print(meat.loc[meat['size'].str.contains('/'), 'size'].value_counts())
 meat[meat['size'].str.contains('/')].sort_values(by='description')
-# Change based on company in description
-meat[(meat['size'].str.contains('/')) & (meat.description.str.contains('Beyond Meat'))]
+
 
 # import certifi
 # certifi.where()
@@ -341,12 +395,12 @@ coffee_size_oz['runtime_mst'] = dt.datetime.now(pytz_mtn)
 print(coffee_size_oz)
 
 # decaf coffee
-decaf_coffee = product_search(filter_term='decaf coffee')
+decaf_coffee = product_search(filter_term='decaf coffee', location_id=denver_location_id)
 # Remove coffee pods from options
 decaf_coffee = decaf_coffee[~(decaf_coffee['description'].str.findall(r'Coffe{1,2}.*Pods').map(lambda d: len(d)) > 0)]
 # clean up misc. sizes
 print(decaf_coffee.loc[decaf_coffee['size'].str.contains('/'), 'size'])
-print(decaf_coffee.loc[decaf_coffee['size'] =='each', 'size'])
+print(decaf_coffee.loc[decaf_coffee['size'] == 'each', 'size'])
 print(decaf_coffee['size'].value_counts())
 # create size_ column
 decaf_coffee['size_'] = decaf_coffee['size'].apply(lambda x: x.split(" ", 1))
@@ -475,7 +529,7 @@ tea = pd.concat([decaf_tea, herbal_tea], axis=0)
 tea.loc[(tea['description'].str.contains('Tea Bags|Teabags')) &
         (tea['size'].str.contains('ct')) & (tea['size'].str.contains('oz')), 'size'] = \
     tea.loc[ ( tea['description'].str.contains('Tea Bags|Teabags') ) &
-         ( tea['size'].str.contains('ct')) & ( tea['size'].str.contains('oz')), 'size' ].apply(lambda x : x[:x.find('ct')+len('ct')])
+         ( tea['size'].str.contains('ct')) & ( tea['size'].str.contains('oz')), 'size'].apply(lambda x: x[:x.find('ct')+len('ct')])
 
 # tea.loc[tea['size'] == '10 qt', 'size'] = ####
 tea.loc[tea['size'] == '12 bottles / 16 fl oz', 'size'] = str(12*16) + ' fl oz'
