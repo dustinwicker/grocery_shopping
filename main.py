@@ -198,7 +198,7 @@ sns.histplot(data=tp_size_each, x='per_size_each')
 veg = product_search(filter_term='fresh vegetables', location_id=denver_location_id)
 # clean up misc. sizes (add description or upc to make more exact? or could make too specific?) - those with "/", 'each'
 print(veg.loc[veg['size'].str.contains('/'), 'size'])
-print(veg.loc[veg['size'] =='each', 'size'])
+print(veg.loc[veg['size'] == 'each', 'size'])
 veg.loc[veg['size'] == 'each', 'size'] = '1 each'
 veg.loc[veg['size'] == '1 pt / 10 oz', 'size'] = '10 oz'
 veg.loc[veg['size'] == '4 ct / 3 oz', 'size'] = '12 oz'
@@ -288,9 +288,9 @@ veg_fruit_size_each = pd.concat([veg_size_each, fruit_size_each], axis=0).\
     drop_duplicates(subset=['description', 'size']).reset_index(drop=True).sort_values(by=['per_size_each'])
 
 veg_fruit_size_oz['per_size_rank'] = veg_fruit_size_oz.groupby('per_size_oz')['per_size_oz'].transform('mean').\
-    rank(method= 'dense', ascending=True)
+    rank(method='dense', ascending=True)
 veg_fruit_size_each['per_size_rank'] = veg_fruit_size_each.groupby('per_size_each')['per_size_each'].transform('mean').\
-    rank(method='dense',ascending=True)
+    rank(method='dense', ascending=True)
 print(veg_fruit_size_oz, veg_fruit_size_each)
 
 # meat
